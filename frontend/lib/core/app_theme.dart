@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 // Aquí guardamos los colores exactos de tu diseño.
 class AppColors {
   static const Color trustBlue = Color(0xFF0047AB); // Tu color de autoridad
-  static const Color emeraldGreen = Color(0xFF50C878); // Para estados seguros
+  static const Color esmeraldGreen = Color(0xFF50C878); // Para estados seguros
   static const Color panicRed = Color(0xFFDC3545); // EXCLUSIVO para emergencias
   static const Color surface = Color(0xFFFAF8FF); // Fondo principal
   static const Color outline = Color(0xFF737784); // Bordes de inputs

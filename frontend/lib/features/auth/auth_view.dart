@@ -1,7 +1,8 @@
 import 'package:chowtrack/core/app_theme.dart';
 import 'package:chowtrack/core/utils/app_validators.dart';
+import 'package:chowtrack/features/auth/email_verification_view.dart';
 import 'package:chowtrack/features/home/homeview.dart';
-import 'package:chowtrack/features/petRegistration/wizardsteps.dart';
+import 'package:chowtrack/features/petRegistration/wizardsteps.dart'; // ¡Vuelve a ser útil aquí!
 import 'package:flutter/material.dart';
 import 'auth_controller.dart';
 
@@ -16,7 +17,7 @@ class _AuthViewState extends State<AuthView> {
   final AuthController _authController = AuthController();
   final _formKey = GlobalKey<FormState>();
 
-  final _emailController = TextEditingController();
+  final _identityController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -30,38 +31,38 @@ class _AuthViewState extends State<AuthView> {
 
   @override
   void dispose() {
-    // Limpiamos controladores para evitar fugas de memoria
-    _emailController.dispose();
+    _identityController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _authController.dispose();
     super.dispose();
   }
 
-  // Ejecuta la validación del frontend y dispara la lógica del controlador
   void _submitForm() async {
     if (_formKey.currentState!.validate()) {
       final success = await _authController.authenticateWithEmail(
-        email: _emailController.text.trim(),
+        identity: _identityController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
       if (success && mounted) {
         if (_authController.isLoginMode) {
-          // Usuario antiguo -> Va directo al Inicio
+          // Flujo Email 1: Usuario existente -> Al mapa
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const HomeView()),
           );
         } else {
-          // Usuario nuevo -> Va al paso a paso de la mascota
-          Navigator.pushReplacement(
+          // Flujo Email 2: Usuario nuevo -> A verificar correo (quien luego lo mandará al Wizard)
+          Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const PetRegistrationWizard()),
+            MaterialPageRoute(
+              builder: (_) =>
+                  EmailVerificationView(email: _identityController.text.trim()),
+            ),
           );
         }
       } else if (mounted && _authController.errorMessage != null) {
-        // Muestra errores devueltos por el servidor si los hubiera
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_authController.errorMessage!),
@@ -95,21 +96,35 @@ class _AuthViewState extends State<AuthView> {
                 ),
                 const SizedBox(height: 40),
 
-                // CAMPOS DEL FORMULARIO
                 TextFormField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
+                  controller: _identityController,
+                  keyboardType: _authController.isLoginMode
+                      ? TextInputType.text
+                      : TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    labelText: "Correo Electrónico",
-                    hintText: "usuario@gmail.com",
+                    labelText: _authController.isLoginMode
+                        ? "Correo o Nombre de Usuario"
+                        : "Correo Electrónico",
+                    hintText: _authController.isLoginMode
+                        ? "ejemplo@gmail.com o tu_usuario"
+                        : "usuario@gmail.com",
                   ),
-                  validator: AppValidators.email,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Este campo es obligatorio';
+                    }
+                    if (!_authController.isLoginMode) {
+                      return AppValidators.email(value);
+                    }
+                    return null;
+                  },
                 ),
                 AppTheme.spacer,
+
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: "Contraseña",
                     hintText: "**********",
                   ),
@@ -121,7 +136,7 @@ class _AuthViewState extends State<AuthView> {
                   TextFormField(
                     controller: _confirmPasswordController,
                     obscureText: true,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       labelText: "Confirmar Contraseña",
                       hintText: "**********",
                     ),
@@ -135,7 +150,6 @@ class _AuthViewState extends State<AuthView> {
 
                 const SizedBox(height: 24),
 
-                // BOTÓN PRINCIPAL ADAPTATIVO
                 _authController.isLoading
                     ? const Center(
                         child: Padding(
@@ -144,8 +158,7 @@ class _AuthViewState extends State<AuthView> {
                         ),
                       )
                     : FilledButton(
-                        onPressed:
-                            _submitForm, // Cambiado de () {} a nuestra función de lógica
+                        onPressed: _submitForm,
                         child: Text(
                           _authController.isLoginMode
                               ? "ENTRAR"
@@ -176,13 +189,38 @@ class _AuthViewState extends State<AuthView> {
                 ),
                 const SizedBox(height: 40),
 
-                // BOTONES SOCIALES
                 OutlinedButton.icon(
                   onPressed: () async {
+                    final currentContext = context;
                     final googleSuccess = await _authController
                         .signInWithGoogle();
-                    if (googleSuccess && mounted) {
-                      // Manejar redirección tras autenticar con Google
+
+                    if (!currentContext.mounted) return;
+
+                    if (googleSuccess) {
+                      // Corrección de lógica para Google: Filtramos por modo de pantalla
+                      if (_authController.isLoginMode) {
+                        // Flujo Google 1: Login exitoso -> Al mapa directamente
+                        Navigator.pushReplacement(
+                          currentContext,
+                          MaterialPageRoute(builder: (_) => const HomeView()),
+                        );
+                      } else {
+                        // Flujo Google 2: Registro exitoso -> Se salta la verificación y va al Wizard
+                        Navigator.pushReplacement(
+                          currentContext,
+                          MaterialPageRoute(
+                            builder: (_) => const PetRegistrationWizard(),
+                          ),
+                        );
+                      }
+                    } else if (_authController.errorMessage != null) {
+                      ScaffoldMessenger.of(currentContext).showSnackBar(
+                        SnackBar(
+                          content: Text(_authController.errorMessage!),
+                          backgroundColor: AppColors.panicRed,
+                        ),
+                      );
                     }
                   },
                   icon: const Icon(Icons.g_mobiledata, size: 30),
@@ -193,9 +231,9 @@ class _AuthViewState extends State<AuthView> {
                   ),
                 ),
                 AppTheme.spacer,
+
                 OutlinedButton.icon(
-                  onPressed:
-                      _authController.signInWithApple, // Apunta al stub vacío
+                  onPressed: _authController.signInWithApple,
                   icon: const Icon(Icons.apple),
                   label: Text(
                     _authController.isLoginMode
