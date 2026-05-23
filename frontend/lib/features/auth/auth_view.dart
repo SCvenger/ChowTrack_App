@@ -1,9 +1,10 @@
+// lib/features/auth/auth_view.dart
+
 import 'package:chowtrack/core/app_theme.dart';
 import 'package:chowtrack/core/utils/app_validators.dart';
 import 'package:chowtrack/features/auth/email_verification_view.dart';
-import 'package:chowtrack/features/home/homeview.dart';
-import 'package:chowtrack/features/petRegistration/wizardsteps.dart'; // ¡Vuelve a ser útil aquí!
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'auth_controller.dart';
 
 class AuthView extends StatefulWidget {
@@ -14,231 +15,223 @@ class AuthView extends StatefulWidget {
 }
 
 class _AuthViewState extends State<AuthView> {
-  final AuthController _authController = AuthController();
   final _formKey = GlobalKey<FormState>();
-
   final _identityController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _authController.addListener(() {
-      if (mounted) setState(() {});
-    });
-  }
 
   @override
   void dispose() {
     _identityController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _authController.dispose();
     super.dispose();
   }
 
-  void _submitForm() async {
-    if (_formKey.currentState!.validate()) {
-      final success = await _authController.authenticateWithEmail(
-        identity: _identityController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+  void _submitForm(AuthController authController) async {
+    if (!_formKey.currentState!.validate()) return;
 
-      if (success && mounted) {
-        if (_authController.isLoginMode) {
-          // Flujo Email 1: Usuario existente -> Al mapa
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const HomeView()),
-          );
-        } else {
-          // Flujo Email 2: Usuario nuevo -> A verificar correo (quien luego lo mandará al Wizard)
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  EmailVerificationView(email: _identityController.text.trim()),
+    final success = await authController.authenticateWithEmail(
+      identity: _identityController.text.trim(),
+      password: _passwordController.text.trim(),
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      if (!authController.isLoginMode) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EmailVerificationView(
+              email: _identityController.text.trim(),
             ),
-          );
-        }
-      } else if (mounted && _authController.errorMessage != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_authController.errorMessage!),
-            backgroundColor: AppColors.panicRed,
           ),
         );
       }
+
+    } else if (authController.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authController.errorMessage!),
+          backgroundColor: AppColors.panicRed,
+        ),
+      );
+    }
+  }
+
+  void _handleGoogleAuth(AuthController authController) async {
+    final success = await authController.initiateGoogleAuth();
+
+    if (!mounted) return;
+
+    if (!success && authController.errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authController.errorMessage!),
+          backgroundColor: AppColors.panicRed,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final authController = context.watch<AuthController>();
+
     return Scaffold(
-      body: Form(
-        key: _formKey,
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 40),
+                const SizedBox(height: 48),
+
+                // Logo 
+                const Icon(
+                  Icons.pets,
+                  size: 80,
+                  color: AppColors.trustBlue,
+                ),
+
+                const SizedBox(height: 16),
+
                 Text(
-                  _authController.isLoginMode
-                      ? "¡Hola de nuevo!"
-                      : "Crea tu cuenta",
+                  authController.isLoginMode
+                      ? 'Bienvenido de vuelta'
+                      : 'Crea tu cuenta',
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+
+                const SizedBox(height: 8),
+
+                Text(
+                  authController.isLoginMode
+                      ? 'Ingresa tus datos para continuar'
+                      : 'Protege a tu mascota con ChowTrack',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: AppColors.outline,
+                  ),
+                ),
+
                 const SizedBox(height: 40),
 
+                // Campo para el email o usuario
                 TextFormField(
-                  controller: _identityController,
-                  keyboardType: _authController.isLoginMode
-                      ? TextInputType.text
-                      : TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: _authController.isLoginMode
-                        ? "Correo o Nombre de Usuario"
-                        : "Correo Electrónico",
-                    hintText: _authController.isLoginMode
-                        ? "ejemplo@gmail.com o tu_usuario"
-                        : "usuario@gmail.com",
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Este campo es obligatorio';
-                    }
-                    if (!_authController.isLoginMode) {
-                      return AppValidators.email(value);
-                    }
-                    return null;
-                  },
-                ),
-                AppTheme.spacer,
+                      controller: _identityController,
+                      keyboardType: authController.isLoginMode
+                          ? TextInputType.text
+                          : TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        prefixIcon:Icon(Icons.email_outlined) ,
+                        labelText: authController.isLoginMode
+                            ? "E-mail o Usuario"
+                            : "Correo Electrónico",
+                        hintText: authController.isLoginMode
+                            ? "juan@gmail.com o juan"
+                            : "usuario@gmail.com",
+                      ),
+                      validator: (value) {
+                        if (authController.isLoginMode) {
+                          return AppValidators.identity(value);
+                        } else {
+                          return AppValidators.email(value);
+                        }
+                      },
+                    ),
 
+                const SizedBox(height: 16),
+
+                // Campo para la contraseña
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
                   decoration: const InputDecoration(
-                    labelText: "Contraseña",
-                    hintText: "**********",
+                    labelText: 'Contraseña',
+                    prefixIcon: Icon(Icons.lock_outlined),
                   ),
                   validator: AppValidators.password,
+                  textInputAction: authController.isLoginMode
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  onFieldSubmitted: authController.isLoginMode
+                      ? (_) => _submitForm(authController)
+                      : null,
                 ),
 
-                if (!_authController.isLoginMode) ...[
-                  const SizedBox(height: 24),
+                // Campo para confirmar contraseña
+                if (!authController.isLoginMode) ...[
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _confirmPasswordController,
                     obscureText: true,
                     decoration: const InputDecoration(
-                      labelText: "Confirmar Contraseña",
-                      hintText: "**********",
+                      labelText: 'Confirmar contraseña',
+                      prefixIcon: Icon(Icons.lock_outlined),
                     ),
-                    validator: (value) => AppValidators.match(
-                      value,
-                      _passwordController.text,
-                      'Las contraseñas no coinciden',
-                    ),
+                    validator: (value) {
+                      if (value != _passwordController.text) {
+                        return 'Las contraseñas no coinciden';
+                      }
+                      return null;
+                    },
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _submitForm(authController),
                   ),
                 ],
 
+                const SizedBox(height: 32),
+
+                // Botón principal
+                FilledButton(
+                  onPressed: authController.isLoading
+                      ? null
+                      : () => _submitForm(authController),
+                  child: authController.isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : Text(
+                          authController.isLoginMode
+                              ? 'Iniciar sesión'
+                              : 'Registrarme',
+                        ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Botón Google
+                OutlinedButton.icon(
+                  onPressed: authController.isLoading
+                      ? null
+                      : () => _handleGoogleAuth(authController),
+                  icon: const Icon(Icons.login),
+                  label: const Text('Continuar con Google'),
+                ),
+
                 const SizedBox(height: 24),
 
-                _authController.isLoading
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    : FilledButton(
-                        onPressed: _submitForm,
-                        child: Text(
-                          _authController.isLoginMode
-                              ? "ENTRAR"
-                              : "REGISTRARME",
-                        ),
-                      ),
-
-                const SizedBox(height: 12),
+                // Toggle login/registro
                 TextButton(
-                  onPressed: _authController.toggleMode,
+                  onPressed: authController.toggleMode,
                   child: Text(
-                    _authController.isLoginMode
-                        ? "¿No tienes cuenta? Regístrate"
-                        : "¿Ya tienes cuenta? Inicia sesión",
-                  ),
-                ),
-
-                const SizedBox(height: 40),
-                const Row(
-                  children: [
-                    Expanded(child: Divider()),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 10),
-                      child: Text("o"),
-                    ),
-                    Expanded(child: Divider()),
-                  ],
-                ),
-                const SizedBox(height: 40),
-
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final currentContext = context;
-                    final googleSuccess = await _authController
-                        .signInWithGoogle();
-
-                    if (!currentContext.mounted) return;
-
-                    if (googleSuccess) {
-                      // Corrección de lógica para Google: Filtramos por modo de pantalla
-                      if (_authController.isLoginMode) {
-                        // Flujo Google 1: Login exitoso -> Al mapa directamente
-                        Navigator.pushReplacement(
-                          currentContext,
-                          MaterialPageRoute(builder: (_) => const HomeView()),
-                        );
-                      } else {
-                        // Flujo Google 2: Registro exitoso -> Se salta la verificación y va al Wizard
-                        Navigator.pushReplacement(
-                          currentContext,
-                          MaterialPageRoute(
-                            builder: (_) => const PetRegistrationWizard(),
-                          ),
-                        );
-                      }
-                    } else if (_authController.errorMessage != null) {
-                      ScaffoldMessenger.of(currentContext).showSnackBar(
-                        SnackBar(
-                          content: Text(_authController.errorMessage!),
-                          backgroundColor: AppColors.panicRed,
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.g_mobiledata, size: 30),
-                  label: Text(
-                    _authController.isLoginMode
-                        ? "Continuar con Google"
-                        : "Registrarse con Google",
-                  ),
-                ),
-                AppTheme.spacer,
-
-                OutlinedButton.icon(
-                  onPressed: _authController.signInWithApple,
-                  icon: const Icon(Icons.apple),
-                  label: Text(
-                    _authController.isLoginMode
-                        ? "Continuar con Apple"
-                        : "Registrarse con Apple",
+                    authController.isLoginMode
+                        ? '¿No tienes cuenta? Regístrate'
+                        : '¿Ya tienes cuenta? Inicia sesión',
                   ),
                 ),
               ],

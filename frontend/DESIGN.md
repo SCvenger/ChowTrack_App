@@ -1,161 +1,253 @@
 ---
 name: Clean Tech Recovery
+version: 1.1.0
+status: MVP activo
+
 colors:
-  surface: '#faf8ff'
-  surface-dim: '#d9d9e2'
-  surface-bright: '#faf8ff'
-  surface-container-lowest: '#ffffff'
-  surface-container-low: '#f3f3fc'
-  surface-container: '#ededf6'
-  surface-container-high: '#e7e7f0'
-  surface-container-highest: '#e2e2eb'
-  on-surface: '#191b22'
-  on-surface-variant: '#434653'
-  inverse-surface: '#2e3037'
-  inverse-on-surface: '#f0f0f9'
-  outline: '#737784'
-  outline-variant: '#c3c6d5'
-  surface-tint: '#2559bd'
-  primary: '#00327d'
+  # ── Colores activos en MVP ────────────────────────────────────────
+  trust-blue: '#0047AB'          # Color primario de la app (AppColors.trustBlue)
+  emerald-green: '#50C878'       # Estado SAFE y confirmaciones (AppColors.esmeraldGreen)
+  panic-red: '#DC3545'           # Estado LOST y alertas críticas (AppColors.panicRed)
+  surface: '#FAF8FF'             # Fondo principal (AppColors.surface)
+  input-fill: '#F2F2F7'          # Relleno de inputs (AppColors.inputFill)
+  outline: '#737784'             # Bordes y texto secundario (AppColors.outline)
+  black: '#000000'               # Texto principal e íconos (AppColors.black)
+
+  # ── Sistema Material 3 completo (reservado para v2) ───────────────
+  primary: '#0047AB'
   on-primary: '#ffffff'
-  primary-container: '#0047ab'
-  on-primary-container: '#a5bdff'
-  inverse-primary: '#b1c5ff'
-  secondary: '#006d36'
+  primary-dark: '#00327D'
+  secondary: '#006D36'
   on-secondary: '#ffffff'
-  secondary-container: '#83fba5'
-  on-secondary-container: '#00743a'
-  tertiary: '#651f00'
-  on-tertiary: '#ffffff'
-  tertiary-container: '#8b2e01'
-  on-tertiary-container: '#ffaa8a'
-  error: '#ba1a1a'
-  on-error: '#ffffff'
-  error-container: '#ffdad6'
-  on-error-container: '#93000a'
-  primary-fixed: '#dae2ff'
-  primary-fixed-dim: '#b1c5ff'
-  on-primary-fixed: '#001946'
-  on-primary-fixed-variant: '#00419e'
-  secondary-fixed: '#83fba5'
-  secondary-fixed-dim: '#66dd8b'
-  on-secondary-fixed: '#00210c'
-  on-secondary-fixed-variant: '#005227'
-  tertiary-fixed: '#ffdbcf'
-  tertiary-fixed-dim: '#ffb59a'
-  on-tertiary-fixed: '#380d00'
-  on-tertiary-fixed-variant: '#802900'
-  background: '#faf8ff'
-  on-background: '#191b22'
-  surface-variant: '#e2e2eb'
+  secondary-container: '#83FBA5'
+  tertiary: '#651F00'
+  tertiary-container: '#8B2E01'
+  error: '#DC3545'
+  surface-dim: '#D9D9E2'
+  surface-container-low: '#F3F3FC'
+  surface-container: '#EDEDF6'
+  surface-container-high: '#E7E7F0'
+  outline-variant: '#C3C6D5'
+  inverse-surface: '#2E3037'
+  inverse-on-surface: '#F0F0F9'
+
 typography:
+  font-family: Inter           # Google Fonts — sustituye a Metropolis (no disponible en GFonts)
   display-lg:
-    fontFamily: metropolis
     fontSize: 40px
     fontWeight: '700'
     lineHeight: 48px
     letterSpacing: -0.02em
+    flutter: AppTheme.displayLg
   headline-lg:
-    fontFamily: metropolis
     fontSize: 32px
     fontWeight: '700'
     lineHeight: 40px
+    flutter: AppTheme.headlineLg
   headline-md:
-    fontFamily: metropolis
     fontSize: 24px
     fontWeight: '600'
     lineHeight: 32px
+    flutter: AppTheme.headlineMd
   body-lg:
-    fontFamily: metropolis
     fontSize: 18px
     fontWeight: '400'
     lineHeight: 28px
+    flutter: AppTheme.bodyLg
   body-md:
-    fontFamily: metropolis
     fontSize: 16px
     fontWeight: '400'
     lineHeight: 24px
+    flutter: AppTheme.bodyMd
   label-lg:
-    fontFamily: metropolis
     fontSize: 14px
     fontWeight: '600'
     lineHeight: 20px
     letterSpacing: 0.05em
+    flutter: AppTheme.labelLg
   label-sm:
-    fontFamily: metropolis
     fontSize: 12px
     fontWeight: '500'
     lineHeight: 16px
+    flutter: AppTheme.labelSm
+
 rounded:
-  sm: 0.25rem
-  DEFAULT: 0.5rem
-  md: 0.75rem
-  lg: 1rem
-  xl: 1.5rem
-  full: 9999px
+  sm: 0.25rem    # 4px
+  DEFAULT: 0.75rem  # 12px — inputs (actualizado para coincidir con mockups)
+  md: 0.75rem    # 12px
+  lg: 1rem       # 16px — botones y tarjetas
+  xl: 1.5rem     # 24px — elementos HUD y escáner nasal
+  full: 9999px   # chips y badges
+
 spacing:
   base-unit: 8px
-  margin-mobile: 24px
-  gutter: 16px
-  tap-target-min: 48px
-  stack-sm: 12px
-  stack-md: 24px
-  stack-lg: 40px
+  margin-mobile: 24px     # Flutter: AppTheme.marginMobile
+  gutter: 16px            # Flutter: AppTheme.gutter
+  tap-target-min: 48px    # Flutter: AppTheme.tapTarget
+  stack-sm: 12px          # Flutter: AppTheme.stackSm
+  stack-md: 24px          # Flutter: AppTheme.stackMd
+  stack-lg: 40px          # Flutter: AppTheme.stackLg
 ---
 
-## Brand & Style
+## Filosofía de diseño
 
-This design system is built on the pillars of **Urgency, Clarity, and Reliability**. As a dog recovery tool, the interface must transition seamlessly from a calm, daily tracking utility to a high-stakes emergency tool. 
+Este sistema está construido sobre tres pilares: **Urgencia, Claridad y Confiabilidad**. Como herramienta de recuperación de mascotas, la interfaz debe transitar sin fricción desde una utilidad de rastreo cotidiana hasta una herramienta de emergencia de alta tensión.
 
-The aesthetic is **Modern Minimalist** with a "Clean Tech" influence—utilizing vast white space to reduce cognitive load during high-stress situations. For outdoor visibility, the system employs high-contrast elements and large, unambiguous touch points. A signature feature is the **Sleek HUD Overlay**, which uses semi-transparent dark layers and neon-infused accents to represent AI-driven scanning and tracking features, providing a high-tech, precise feel without cluttering the core experience.
+La estética es **Minimalista Moderna** con influencia _Clean Tech_ — espacios en blanco generosos para reducir la carga cognitiva en situaciones de estrés. Para visibilidad exterior, el sistema emplea elementos de alto contraste y puntos de toque grandes e inequívocos. El overlay HUD del escaneo de trufa usa capas oscuras semi-transparentes y acentos verdes para representar las funciones de IA, aportando precisión tecnológica sin saturar la experiencia principal.
 
-## Colors
+---
 
-The palette is engineered for maximum legibility in outdoor environments, specifically under direct sunlight.
+## Colores
 
-*   **Trust Blue (#0047AB):** Used for primary branding, active navigation states, and authoritative UI elements. It establishes a sense of professional security.
-*   **Emerald Green (#50C878):** Reserved for "Safe" status indicators, successful connections (GPS), and positive confirmations.
-*   **Panic Red (#DC3545):** High-chroma red used exclusively for the "Report Lost" trigger and active search alerts. It must never be used for minor errors.
-*   **Pure White (#FFFFFF):** The bedrock of the design system, providing the highest possible contrast for text and iconography.
+### Activos en MVP
 
-## Typography
+La paleta central opera con siete tokens. Todo lo que no esté en esta lista es parte del sistema Material 3 reservado para versiones posteriores.
 
-The system utilizes **Metropolis** (as a high-quality alternative to Urbanist) to achieve a geometric, clean-tech look that remains legible at high speeds. 
+| Token | Hex | Constante Dart | Uso |
+|---|---|---|---|
+| `trust-blue` | `#0047AB` | `AppColors.trustBlue` | Color primario, botones de acción, barras de progreso activo |
+| `emerald-green` | `#50C878` | `AppColors.esmeraldGreen` | Estado `home`, éxito, confirmaciones, overlay de escaneo |
+| `panic-red` | `#DC3545` | `AppColors.panicRed` | Estado `lost` y alertas críticas **exclusivamente** — nunca para errores de formulario |
+| `surface` | `#FAF8FF` | `AppColors.surface` | Fondo principal de todas las pantallas |
+| `input-fill` | `#F2F2F7` | `AppColors.inputFill` | Relleno de campos de texto |
+| `outline` | `#737784` | `AppColors.outline` | Bordes de inputs, texto secundario, iconos inactivos |
+| `black` | `#000000` | `AppColors.black` | Texto principal, títulos y headlines |
 
-**Hierarchy Rules:**
-*   **Large Headings:** Use `display-lg` for critical status updates (e.g., "PET FOUND").
-*   **Legibility First:** Body text never drops below 16px to ensure readability while walking or running.
-*   **Case Usage:** Labels should use All-Caps with slight letter spacing to differentiate from body content in complex HUD overlays.
+> **Regla crítica:** `panic-red` es el único color de estado de emergencia. Usar `error` del tema de Flutter (`#DC3545`) para errores de validación de formularios, manteniendo la misma paleta. El rojo nunca aparece en la UI en estado tranquilo.
 
-## Layout & Spacing
+### Sistema Material 3 (v2)
 
-This design system uses a **Fluid Grid** based on an 8px square rhythm. 
+El esquema Material 3 completo (surface-container, inverse-surface, secondary, tertiary, etc.) está reservado para cuando se implemente el modo oscuro y la expansión del sistema de diseño. No implementar estos tokens en MVP.
 
-*   **Margins:** A generous 24px side margin is enforced on mobile to prevent accidental edge-touches during vigorous outdoor activity.
-*   **Tap Targets:** Every interactive element (buttons, toggles, links) must be a minimum of 48x48dp.
-*   **Vertical Rhythm:** Content blocks are separated by `stack-lg` (40px) to maintain the minimalist, airy feel and prevent information density fatigue.
+---
 
-## Elevation & Depth
+## Tipografía
 
-To maintain a "Clean Tech" aesthetic, the system avoids heavy, muddy shadows. 
+**Inter** es la fuente del sistema. Fue seleccionada por su rendimiento excepcional a tamaños pequeños y en condiciones de lectura exterior bajo luz solar directa, sus pesos variables precisos, y su adopción como estándar en aplicaciones tecnológicas de alta legibilidad.
 
-1.  **Flat Base:** The primary background is pure white and flat.
-2.  **HUD Overlays:** AI scanning and map features use a "Glassmorphic" stack. These surfaces use a `background-blur (20px)` with a 60% opacity dark tint (#1A1A1A) and a 1px inner stroke in white (10% opacity).
-3.  **Soft Elevation:** Floating Action Buttons (FABs) and critical cards use **Ambient Shadows**: a subtle, diffused blue-tinted shadow (Hex #0047AB at 8% opacity, 15px blur, 4px offset).
+### Escala tipográfica
 
-## Shapes
+Cada estilo tiene su constante Dart en `AppTheme`. Nunca usar valores de tamaño directamente en los widgets.
 
-The shape language is **Soft Rounded**. This balances the clinical nature of "Clean Tech" with the friendly, approachable world of pet care.
+| Estilo | Tamaño | Peso | Uso | Constante |
+|---|---|---|---|---|
+| `display-lg` | 40px / 700 | Bold | Estados críticos: "MASCOTA ENCONTRADA" | `AppTheme.displayLg` |
+| `headline-lg` | 32px / 700 | Bold | Títulos principales de pantalla | `AppTheme.headlineLg` |
+| `headline-md` | 24px / 600 | SemiBold | Títulos de sección y wizard | `AppTheme.headlineMd` |
+| `body-lg` | 18px / 400 | Regular | Descripciones y texto explicativo | `AppTheme.bodyLg` |
+| `body-md` | 16px / 400 | Regular | Contenido principal de formularios | `AppTheme.bodyMd` |
+| `label-lg` | 14px / 600 | SemiBold | Labels de inputs, botones secundarios | `AppTheme.labelLg` |
+| `label-sm` | 12px / 500 | Medium | Notas, hints, metadata | `AppTheme.labelSm` |
 
-*   **Buttons & Cards:** 16px (`rounded-lg`) corner radius.
-*   **Input Fields:** 8px (`soft`) corner radius.
-*   **HUD Elements:** 24px (`rounded-xl`) corner radius to suggest a more organic, lens-like feel for AI features.
+### Reglas de uso
 
-## Components
+- El texto de cuerpo **nunca baja de 16px**. En condiciones de movimiento o estrés, la legibilidad es prioritaria.
+- **All-Caps con letter-spacing** se usa exclusivamente en overlays HUD de escaneo (ej: el badge `ESCANEANDO...`). No aplica a labels de formularios ni navegación general.
+- Toda la UI usa sentence case salvo los badges de estado HUD.
 
-*   **Primary Action Buttons:** Solid `Trust Blue` backgrounds with White `label-lg` text. Height is fixed at 56px for high-visibility tapping.
-*   **Panic Button:** A unique, oversized circular button (80x80dp) using `Panic Red` with a subtle pulsing outer ring animation when active.
-*   **Status Chips:** Small, pill-shaped indicators. "Live" tracking uses a Green background with a 2px White border for maximum pop against map layers.
-*   **HUD Cards:** Used for AI dog-breed identification or distance tracking. Features a frosted-glass background, high-contrast white text, and a `secondary` (Emerald Green) accent for data points.
-*   **Progress Bars:** Thin, 4px high bars. Backgrounds are light grey, while the progress fill is a vibrant Emerald Green to signify "system health."
-*   **Input Fields:** Ghost-style inputs with 1px `ui_border_hex` borders that thicken and turn `Trust Blue` on focus.
+---
+
+## Layout y espaciado
+
+El sistema usa una **grilla fluida** basada en ritmo de 8px. Todas las constantes tienen su equivalente en `AppTheme`.
+
+```dart
+// app_theme.dart — constantes de espaciado
+static const double stackSm     = 12;   // separación compacta entre elementos relacionados
+static const double gutter      = 16;   // separación estándar entre campos de formulario
+static const double stackMd     = 24;   // separación entre secciones de pantalla
+static const double marginMobile = 24;  // margen horizontal de todos los Scaffold
+static const double stackLg     = 40;   // separación entre bloques de contenido mayor
+static const double tapTarget   = 48;   // altura mínima de todo elemento interactivo
+```
+
+- **Margen lateral:** 24px en todos los bordes del contenido para prevenir toques accidentales durante actividad física.
+- **Tap targets:** Todo elemento interactivo (botones, toggles, chips, links) tiene mínimo 48×48dp.
+- **Ritmo vertical:** Los bloques de contenido se separan con `stackLg` (40px) para mantener la estética aireada y evitar densidad de información.
+
+---
+
+## Shapes (border radius)
+
+| Contexto | Valor | Token | Constante Flutter |
+|---|---|---|---|
+| Inputs, tarjetas pequeñas | 12px | `rounded.DEFAULT` | `BorderRadius.circular(12)` |
+| Botones de acción, tarjetas | 16px | `rounded.lg` | `BorderRadius.circular(16)` |
+| Elementos HUD, overlay escáner | 24px | `rounded.xl` | `BorderRadius.circular(24)` |
+| Chips, badges, pills | 9999px | `rounded.full` | `BorderRadius.circular(999)` |
+
+> El valor de 12px para inputs fue verificado contra los mockups de Stitch. El DESIGN original especificaba 8px pero los mockups muestran un radio mayor — se adopta 12px como valor correcto.
+
+---
+
+## Elevación y profundidad
+
+### Base plana (toda la UI general)
+
+Fondo blanco plano sin sombras. La jerarquía visual se comunica a través del color y el espaciado, no de la elevación.
+
+### HUD overlay del escaneo de trufa (MVP)
+
+Durante el escaneo, el overlay de instrucciones usa una capa oscura semi-transparente:
+
+```dart
+// MVP — overlay sólido semi-transparente (sin blur para preservar FPS)
+Container(
+  decoration: BoxDecoration(
+    color: Colors.black.withOpacity(0.60),
+    borderRadius: BorderRadius.circular(24),
+  ),
+  child: content,
+)
+```
+
+> El efecto glassmorphic con `BackdropFilter(filter: ImageFilter.blur(sigmaX: 20))` está planificado para **v2**. Se omite en MVP porque aplica sobre el preview de cámara y puede causar frame drops en dispositivos de gama media. Medir FPS antes de activar.
+
+### Elevación suave (FABs y tarjetas críticas — v2)
+
+Ambient shadow con tint azul: `BoxShadow(color: Color(0xFF0047AB).withOpacity(0.08), blurRadius: 15, offset: Offset(0, 4))`.
+
+> Verificar impacto en FPS en Realme 8 Pro antes de aplicar globalmente.
+
+---
+
+## Componentes
+
+### MVP — implementados
+
+| Componente | Especificación | Estado |
+|---|---|---|
+| **Botón primario** | Trust Blue, blanco, 56px altura, `rounded.lg` | ✅ `FilledButton` en `app_theme.dart` |
+| **Botón secundario** | Outline, sin fondo, 56px altura | ✅ `OutlinedButton` en `app_theme.dart` |
+| **Input de texto** | Fondo `input-fill` (#F2F2F7), sin borde en reposo, borde Trust Blue en foco, 12px radius | ✅ `inputDecorationTheme` en `app_theme.dart` |
+| **Progress dots** | Dot activo = azul (ancho expandido), completado = verde, pendiente = gris | ✅ `ProgressIndicator` widget |
+| **Photo picker** | Círculo punteado 140×140, ícono cámara, preview con overlay de edición | ✅ `PhotoPickerWidget` en `shared/widgets/` |
+| **HUD overlay escaneo** | Fondo negro 60% opacidad, círculo guía verde, badge `ESCANEANDO...` | ✅ `Step3NoseScan` |
+
+### Futuros — planificados para v2+
+
+| Componente | Especificación |
+|---|---|
+| **Panic Button** | Circular 80×80dp, Panic Red, animación de pulso exterior cuando activo |
+| **Status Chip** | Pill-shape, fondo color por estado, borde blanco 2px para capas de mapa |
+| **HUD Card** | Glassmorphic, texto blanco, acento Emerald Green para datos de IA |
+| **Progress Bar** | 4px altura, fondo gris claro, relleno Emerald Green |
+| **Match Modal** | Overlay de pantalla completa, foto de la mascota, score de similitud, acciones |
+| **Live tracking badge** | Verde + pulsación, sobre capa de mapa |
+
+---
+
+## Modo oscuro
+
+El sistema Material 3 definido en el frontmatter incluye los tokens para modo oscuro (`inverse-surface`, `inverse-on-surface`). La implementación se planifica para **v2** junto con el sistema de colores completo.
+
+Para MVP, la app opera en modo claro exclusivamente. El `ThemeData` de Flutter debe tener `brightness: Brightness.light` explícito para prevenir herencia inesperada del sistema.
+
+---
+
+## Principios de accesibilidad
+
+- Contraste mínimo WCAG AA en todos los pares texto/fondo (verificar con herramienta de contraste antes de cada release).
+- El overlay HUD usa blanco puro sobre oscuro — relación de contraste > 7:1.
+- Ningún elemento transmite información únicamente a través del color (acompañar siempre con ícono o texto).
+- Tamaño mínimo de fuente 12px — `label-sm` es el límite absoluto.

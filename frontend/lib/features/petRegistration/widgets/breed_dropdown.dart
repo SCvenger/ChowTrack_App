@@ -25,7 +25,7 @@ class _BreedDropdownState extends State<BreedDropdown> {
     'Chihuahua',
     'Yorkshire Terrier',
     'Bulldog Francés',
-    'Poodle',
+    'Chow-Chow',
     'Schnauzer',
     'Cocker Spaniel',
     'Beagle',

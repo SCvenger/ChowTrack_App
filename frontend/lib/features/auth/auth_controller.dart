@@ -1,15 +1,71 @@
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import '../../core/api_config.dart';
+import '../../core/services/pet_service.dart';
+import '../../core/services/token_storage.dart';
+
+enum AuthState {
+  initial,
+  loading,
+  authenticated,
+  unauthenticated,
+  error,
+}
 
 class AuthController extends ChangeNotifier {
-  // Configuración del endpoint de tu backend de FastAPI
-  final String _baseUrl = "http://127.0.0.1:8000/auth";
-
+  AuthState _state = AuthState.initial;
   bool isLoginMode = true;
-  bool isLoading = false;
   String? errorMessage;
+  String? userId;
+  bool? _hasPets;
+  bool? get hasPets => _hasPets;
+
+  AuthState get state => _state;
+  bool get isLoading => _state == AuthState.loading;
+  bool get isAuthenticated => _state == AuthState.authenticated;
+
+  AuthController() {
+    _checkExistingSession();
+  }
+
+
+  // Sesion existente
+
+  Future<void> _checkExistingSession() async {
+    final hasSession = await TokenStorage.hasValidSession();
+
+    if (hasSession) {
+      userId = await TokenStorage.getUserId();
+      await _resolveDestination();         
+      _setState(AuthState.authenticated);
+    } else {
+      _setState(AuthState.unauthenticated);
+    }
+  }
+
+  // Destimo POST-AUTH
+
+  Future<void> _resolveDestination() async {
+    try {
+      final pets = await PetService.getMyPets();
+      _hasPets = pets.isNotEmpty;
+    } catch (_) {
+      _hasPets = false;
+    }
+  }
+
+  void markHasPets() {
+    _hasPets = true;
+    notifyListeners();
+  }
+
+  void _setState(AuthState newState) {
+    _state = newState;
+    notifyListeners();
+  }
 
   void toggleMode() {
     isLoginMode = !isLoginMode;
@@ -17,74 +73,85 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Lógica REAL para autenticación por Email / Username
+
+  // Autemticacion con email o username
+
+
   Future<bool> authenticateWithEmail({
-    required String
-    identity, // Cambiado de 'email' a 'identity' para admitir username
+    required String identity,
     required String password,
   }) async {
-    isLoading = true;
+    _setState(AuthState.loading);
     errorMessage = null;
-    notifyListeners();
 
     try {
       if (isLoginMode) {
-        // 1. Petición de LOGIN a FastAPI
-        final response = await http.post(
-          Uri.parse('$_baseUrl/login'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'identity': identity.trim(), 'password': password}),
-        );
-
-        if (response.statusCode == 200) {
-          // Aquí puedes guardar el token recibido en el almacenamiento seguro más adelante
-          final data = jsonDecode(response.body);
-          debugPrint("Token recibido: ${data['access_token']}");
-
-          isLoading = false;
-          notifyListeners();
-          return true;
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw errorData['detail'] ?? 'Error al iniciar sesión';
-        }
+        return await _login(identity, password);
       } else {
-        // 2. Petición de REGISTRO a FastAPI
-        final response = await http.post(
-          Uri.parse('$_baseUrl/register'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'email': identity
-                .trim(), // En registro, asumimos que 'identity' es estrictamente un email
-            'password': password,
-          }),
-        );
-
-        if (response.statusCode == 201) {
-          isLoading = false;
-          notifyListeners();
-          return true; // Registro exitoso
-        } else {
-          final errorData = jsonDecode(response.body);
-          throw errorData['detail'] ?? 'Error en el registro';
-        }
+        return await _register(identity, password);
       }
     } catch (e) {
-      isLoading = false;
       errorMessage = e.toString().replaceAll("Exception: ", "");
-      notifyListeners();
+      _setState(AuthState.error);
       return false;
     }
   }
 
-  Future<bool> checkEmailVerification(String email) async {
-    // No encendemos el isLoading global para no bloquear toda la pantalla,
-    // ya que la vista maneja su propio estado interno (_isChecking)
+  Future<bool> _login(String identity, String password) async {
+    final response = await http.post(
+      Uri.parse(ApiConfig.loginUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'identity': identity.trim(),
+        'password': password,
+      }),
+    ).timeout(ApiConfig.requestTimeout);
 
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      await TokenStorage.saveSession(
+        accessToken: data['access_token'],
+        refreshToken: data['refresh_token'],
+        userId: data['user_id'],
+      );
+
+      userId = data['user_id'];
+      await _resolveDestination();         
+      _setState(AuthState.authenticated);
+      return true;
+    } else {
+      final errorData = jsonDecode(response.body);
+      throw errorData['detail'] ?? 'Error al iniciar sesión';
+    }
+  }
+
+  Future<bool> _register(String email, String password) async {
+    final response = await http.post(
+      Uri.parse(ApiConfig.registerUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'email': email.trim(),
+        'password': password,
+      }),
+    ).timeout(ApiConfig.requestTimeout);
+
+    if (response.statusCode == 201) {
+
+      _setState(AuthState.unauthenticated);
+      return true;
+    } else {
+      final errorData = jsonDecode(response.body);
+      throw errorData['detail'] ?? 'Error en el registro';
+    }
+  }
+
+  // Verificacion de email
+
+  Future<bool> checkEmailVerification(String email) async {
     try {
-      // 1. Apuntamos al endpoint de tu FastAPI usando la configuración de IP centralizada
       final url = Uri.parse(
-        '$_baseUrl/auth/check-verification?email=${Uri.encodeComponent(email)}',
+        '${ApiConfig.checkVerificationUrl}?email=${Uri.encodeComponent(email)}',
       );
 
       final response = await http.get(
@@ -93,41 +160,51 @@ class AuthController extends ChangeNotifier {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-      );
+      ).timeout(ApiConfig.requestTimeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Asumiendo que tu FastAPI devuelve un JSON como: {"verified": true}
-        return data['verified'] ?? false;
+        final isVerified = data['verified'] ?? false;
+
+        if (isVerified && data['access_token'] != null) {
+          await TokenStorage.saveSession(
+            accessToken: data['access_token'],
+            refreshToken: data['refresh_token'],
+            userId: data['user_id'],
+          );
+          userId = data['user_id'];
+          _hasPets = false;
+          _setState(AuthState.authenticated);
+        }
+
+        return isVerified;
       }
 
       return false;
     } catch (e) {
-      // Si hay un error de red (ej. timeout), lo propagamos para que la burbuja lo capture
       rethrow;
     }
   }
 
-  // Lógica REAL para Google Auth conectado directamente a Supabase
-  Future<bool> signInWithGoogle() async {
-    isLoading = true;
+
+  // Google OAuth
+  Future<bool> initiateGoogleAuth() async {
+    _setState(AuthState.loading);
     errorMessage = null;
-    notifyListeners();
 
     try {
-      // 1. Le pedimos la URL de Google a tu FastAPI usando la IP dinámica
-      final response = await http.get(Uri.parse('$_baseUrl/google-login'));
+      final response = await http.get(
+        Uri.parse(ApiConfig.googleLoginUrl),
+      ).timeout(ApiConfig.requestTimeout);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final String authUrl = data['url'];
 
-        // 2. Abrimos el navegador web del teléfono para mostrar el menú de cuentas de Google
         final Uri uri = Uri.parse(authUrl);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
-          isLoading = false;
-          notifyListeners();
+          _setState(AuthState.unauthenticated);
           return true;
         } else {
           throw "No se pudo abrir el navegador de autenticación.";
@@ -136,14 +213,54 @@ class AuthController extends ChangeNotifier {
         throw "Error al conectar con el servidor de autenticación.";
       }
     } catch (e) {
-      isLoading = false;
       errorMessage = "Error de Google: $e";
-      notifyListeners();
+      _setState(AuthState.error);
       return false;
     }
   }
 
-  void signInWithApple() {
-    // Implementación futura
+  Future<void> handleOAuthCallback(String code) async {
+    _setState(AuthState.loading);
+
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.authEndpoint}/google-callback'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'code': code}),
+      ).timeout(ApiConfig.requestTimeout);
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        await TokenStorage.saveSession(
+          accessToken: data['access_token'],
+          refreshToken: data['refresh_token'],
+          userId: data['user_id'],
+        );
+
+        userId = data['user_id'];
+        await _resolveDestination();
+        _setState(AuthState.authenticated);
+      } else {
+        throw "Error al procesar el callback de Google";
+      }
+    } catch (e) {
+      errorMessage = "Error en callback: $e";
+      _setState(AuthState.error);
+    }
+  }
+
+  // Logout
+
+  Future<void> logout() async {
+    await TokenStorage.clearAll();
+    userId = null;
+    _hasPets = null;
+    _setState(AuthState.unauthenticated);
+  }
+
+  Future<void> signInWithApple() async {
+    errorMessage = "Apple Sign In aún no implementado";
+    notifyListeners();
   }
 }

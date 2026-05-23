@@ -1,6 +1,6 @@
 class ApiConfig {
   // URLs base según el entorno
-  static const String _devBaseUrl = 'http://192.168.0.164:8000'; // Android Emulator
+  static const String _devBaseUrl = 'http://127.0.0.1:8000'; // Android Emulator
   static const String _prodBaseUrl = 'https://api.chowtrack.com'; // Producción
 
   static const bool _isProduction = false;

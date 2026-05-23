@@ -1,7 +1,10 @@
+// lib/features/auth/email_verification_view.dart
+
 import 'dart:async';
 import 'package:chowtrack/core/app_theme.dart';
-import 'package:chowtrack/features/petRegistration/wizardsteps.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../petRegistration/wizard.dart';
 import 'auth_controller.dart';
 
 class EmailVerificationView extends StatefulWidget {
@@ -14,49 +17,94 @@ class EmailVerificationView extends StatefulWidget {
 }
 
 class _EmailVerificationViewState extends State<EmailVerificationView> {
-  final AuthController _authController = AuthController();
   bool _isChecking = false;
-  Timer? _autoCheckTimer; // 1. Mover la variable aquí arriba con los estados
+  Timer? _autoCheckTimer;
 
-  // 2. CICLO DE VIDA: ElinitState siempre va al inicio de la estructura del State
   @override
   void initState() {
     super.initState();
-    // Cada 4 segundos verifica automáticamente si ya activó su cuenta
-    _autoCheckTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
-      _silentCheckStatus();
-    });
+
+    // Polling silencioso cada 4 segundos
+    _autoCheckTimer = Timer.periodic(
+      const Duration(seconds: 4),
+      (timer) => _silentCheckStatus(),
+    );
   }
 
   @override
   void dispose() {
-    _autoCheckTimer
-        ?.cancel(); // Cancelar el timer antes de desechar el controlador
-    _authController.dispose();
+    _autoCheckTimer?.cancel();
     super.dispose();
   }
 
-  // 3. MÉTODOS LÓGICOS DE FLUJO Y DIÁLOGOS
-
-  // Método silencioso que no levanta diálogos molestos ni bloquea la pantalla
+  // Verificación en background — polling cada 4 segundos
   Future<void> _silentCheckStatus() async {
+    final authController = context.read<AuthController>();
+
     try {
-      final isVerified = await _authController.checkEmailVerification(
-        widget.email,
-      );
-      if (isVerified && mounted) {
+      final isVerified = await authController.checkEmailVerification(widget.email);
+
+      if (!mounted) return;
+
+      if (isVerified) {
         _autoCheckTimer?.cancel();
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const PetRegistrationWizard()),
-        );
+        _navigateToWizard();
       }
     } catch (_) {
-      // Silenciar errores en background para no interrumpir al usuario
+      // Silenciar errores de background
     }
   }
 
-  // Función para mostrar la burbuja de error en el medio (Custom Dialog)
+  // Verificación manual cuando el usuario presiona "YA LO VERIFIQUÉ"
+  Future<void> _checkVerificationStatus() async {
+    setState(() => _isChecking = true);
+
+    final authController = context.read<AuthController>();
+
+    try {
+      final isVerified = await authController.checkEmailVerification(
+        widget.email,
+      );
+
+      if (!mounted) return;
+
+      if (isVerified) {
+        _autoCheckTimer?.cancel();
+        _navigateToWizard();
+      } else {
+        _showPendingDialog();
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      _showErrorDialog(
+        "Error de Conexión",
+        "No pudimos validar tu estado en este momento: $e",
+        Icons.error_outline,
+        AppColors.panicRed,
+      );
+    } finally {
+      if (mounted) setState(() => _isChecking = false);
+    }
+  }
+
+  void _navigateToWizard() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const PetRegistrationWizard()),
+      (route) => false,
+    );
+  }
+
+  void _showPendingDialog() {
+    _showErrorDialog(
+      "Cuenta Pendiente",
+      "Aún no hemos detectado tu confirmación.\nRevisa tu correo y haz clic en el enlace.",
+      Icons.mark_email_unread_outlined,
+      AppColors.panicRed,
+    );
+  }
+
   void _showErrorDialog(
     String title,
     String message,
@@ -100,7 +148,9 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    style: FilledButton.styleFrom(backgroundColor: color),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: color,
+                    ),
                     child: const Text("ENTENDIDO"),
                   ),
                 ),
@@ -112,47 +162,6 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
     );
   }
 
-  Future<void> _checkVerificationStatus() async {
-    setState(() => _isChecking = true);
-
-    try {
-      final isVerified = await _authController.checkEmailVerification(
-        widget.email,
-      );
-      debugPrint(
-        "QA Debug Frontend -> ¿El backend dice que está verificado?: $isVerified",
-      );
-
-      if (!mounted) return;
-
-      if (isVerified) {
-        _autoCheckTimer?.cancel(); // Cancelamos también aquí por seguridad
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const PetRegistrationWizard()),
-        );
-      } else {
-        _showErrorDialog(
-          "Cuenta Pendiente",
-          "Aún no hemos detectado tu confirmación. Por favor, revisa tu correo electrónico y haz clic en el enlace.",
-          Icons.mark_email_unread_outlined,
-          AppColors.panicRed,
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      _showErrorDialog(
-        "Error de Conexión",
-        "No pudimos validar tu estado en este momento: $e",
-        Icons.error_outline,
-        AppColors.panicRed,
-      );
-    } finally {
-      if (mounted) setState(() => _isChecking = false);
-    }
-  }
-
-  // 4. DISEÑO/MÉTODO BUILD: Siempre va al final de la clase para facilitar la lectura del árbol de widgets
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -167,26 +176,40 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
               size: 80,
               color: AppColors.trustBlue,
             ),
+
             const SizedBox(height: 24),
+
             const Text(
               "¡Verifica tu correo!",
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
             ),
+
             const SizedBox(height: 16),
+
             Text(
               "Hemos enviado un enlace de confirmación a:\n${widget.email}\n\nActiva tu cuenta desde tu bandeja para poder continuar.",
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, color: AppColors.outline),
+              style: const TextStyle(
+                fontSize: 16,
+                color: AppColors.outline,
+              ),
             ),
+
             const SizedBox(height: 40),
+
             _isChecking
                 ? const Center(child: CircularProgressIndicator())
                 : FilledButton(
                     onPressed: _checkVerificationStatus,
                     child: const Text("YA LO VERIFIQUÉ"),
                   ),
+
             const SizedBox(height: 12),
+
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text("Volver atrás"),

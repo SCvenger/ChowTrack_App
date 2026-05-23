@@ -1,41 +1,35 @@
-from app.core.errors import ChowTrackException
-import os
 # pyrefly: ignore [missing-import]
 from supabase import create_client, Client
-# pyrefly: ignore [missing-import]
-from dotenv import load_dotenv
+from app.core.config import settings
 
+# Validar credenciales al importar
+settings.validate()
 
-# Cargar las variables de entorno desde el archivo .env
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# Validar que las credenciales existan para evitar que falle en silencio
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ChowTrackException(
-        status_code=500, 
-        message="Faltan las credenciales de Supabase en el archivo .env",
-        detail="Por favor, asegúrate de que las variables SUPABASE_URL y SUPABASE_KEY estén correctamente configuradas en tu archivo .env"
-    )
 try:
-    # Creamos la conexión oficial
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("🚀 ¡Conexión exitosa con la base de datos de Supabase!")
-except Exception as e:
-    raise ChowTrackException(
-        status_code=500,
-        message="No se pudo establecer conexión con los servidores de la base de datos.",
-        detail=str(e)
+    supabase_anon: Client = create_client(
+        settings.SUPABASE_URL,
+        settings.SUPABASE_ANON_KEY
     )
+    print("[OK] Conexión Supabase (anon) establecida")
+except Exception as e:
+    raise RuntimeError(f"No se pudo conectar a Supabase (anon): {e}")
+
+try:
+    supabase_admin: Client = create_client(
+        settings.SUPABASE_URL,
+        settings.SUPABASE_SERVICE_ROLE_KEY
+    )
+    print("[OK] Conexión Supabase (service_role) establecida")
+except Exception as e:
+    raise RuntimeError(f"No se pudo conectar a Supabase (service_role): {e}")
 
 
+# Inyectores de dependencia para FastAPI
 
-# Esta es la función que tu archivo auth.py está intentando importar
+# Llave Cliente
 def get_supabase_client() -> Client:
-    """
-    Inyector de dependencia para FastAPI.
-    Devuelve la instancia activa del cliente de Supabase.
-    """
-    return supabase
+    return supabase_anon
+
+# Llave Administrador
+def get_supabase_admin() -> Client:
+    return supabase_admin

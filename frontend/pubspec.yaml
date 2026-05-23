@@ -38,6 +38,10 @@ dependencies:
   http: ^1.6.0
   supabase_flutter: ^2.12.4
   url_launcher: ^6.3.2
+  flutter_secure_storage: ^10.2.0
+  provider: ^6.1.5+1
+  image_picker: ^1.2.2
+  camera: ^0.12.0+1
 
 dev_dependencies:
   flutter_test:
