@@ -1,10 +1,13 @@
-import 'package:chowtrack/features/petRegistration/wizard.dart';
+// lib/main.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/app_theme.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/auth_view.dart';
-import 'features/home/homeview.dart';
+import 'features/navigation/navigation_controller.dart';
+import 'features/navigation/home_shell.dart';
+import 'features/petRegistration/wizard.dart';
 
 void main() {
   runApp(const ChowTrackApp());
@@ -18,42 +21,44 @@ class ChowTrackApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthController()),
-
-      ], 
+        ChangeNotifierProvider(create: (_) => NavigationController()),
+      ],
       child: MaterialApp(
         title: 'ChowTrack',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
 
-        // Ruta inicial con guard de autenticación
         home: Consumer<AuthController>(
-          builder: (context, authController, child) {
-            if (authController.state == AuthState.initial) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
+          builder: (context, auth, child) {
+            // Verificando sesión al inicio
+            if (auth.state == AuthState.initial) {
+              return const _SplashScreen();
             }
 
-            if (authController.isAuthenticated) {
-              // hasPets null no debería ocurrir aquí,
-              // pero por seguridad tratamos null como false (→ Wizard)
-              if (authController.hasPets == true) {
-                return const HomeView();
+            // Autenticado — rutar según si tiene mascotas
+            if (auth.isAuthenticated) {
+              if (auth.hasPets == true) {
+                return const HomeShell();
               }
               return const PetRegistrationWizard();
             }
- 
-            // No autenticado 
+
+            // No autenticado
             return const AuthView();
           },
         ),
-
-        // Rutas nombradas para navegación
-        routes: {
-          '/auth': (context) => const AuthView(),
-          '/home': (context) => const HomeView(),
-        },
       ),
+    );
+  }
+}
+
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
     );
   }
 }

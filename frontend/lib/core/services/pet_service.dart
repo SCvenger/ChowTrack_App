@@ -97,7 +97,7 @@ class PetService {
       'photo_url': photoUrl,
       'phone': data.phone,
     });
- 
+
     // Llamar FastAPI
     try {
       final response = await http.post(
