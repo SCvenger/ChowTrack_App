@@ -40,7 +40,7 @@ class ChowTrackApp extends StatelessWidget {
               if (auth.hasPets == true) {
                 return const HomeShell();
               }
-              return const PetRegistrationWizard();
+              return const PetRegistrationWizard(isFirstRegistration: true,);
             }
 
             // No autenticado

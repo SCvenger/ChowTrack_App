@@ -11,7 +11,7 @@ import 'steps/step4_phone.dart';
 import 'steps/step5_success.dart';
 
 class PetRegistrationWizard extends StatefulWidget {
-  const PetRegistrationWizard({super.key});
+  const PetRegistrationWizard({super.key, required bool isFirstRegistration});
 
   @override
   State<PetRegistrationWizard> createState() => _PetRegistrationWizardState();

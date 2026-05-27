@@ -7,7 +7,7 @@ class HomeView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("ChowTrack"), centerTitle: true ),
-      body: const Center(child: Text("Pantalla del Mapa")),
+      body: const Center(child: Text("Pantalla del Home")),
     );
   }
 }

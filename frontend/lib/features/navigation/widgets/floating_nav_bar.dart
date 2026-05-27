@@ -15,10 +15,10 @@ class FloatingNavBar extends StatelessWidget {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(24, 0, 24, 16 + bottomPadding),
+      padding: EdgeInsets.fromLTRB(44, 0, 44, 16 + bottomPadding),
       child: Material(
         elevation: 12,
-        shadowColor: Colors.black.withValues(alpha: 0.85),
+        shadowColor: AppColors.outline.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(28),
         child: Container(
           height: 64,
@@ -107,7 +107,7 @@ class _NavItem extends StatelessWidget {
                   key: ValueKey(isActive),
                   size: 24,
                   color: isActive
-                      ? Colors.white.withValues(alpha: 0.9)
+                      ? AppColors.surface.withValues(alpha: 0.9)
                       : AppColors.outline,
                 ),
               ),
@@ -155,12 +155,12 @@ class _NavAvatarItem extends StatelessWidget {
               child: CircleAvatar(
                 radius: 14,
                 backgroundColor: isActive
-                    ? Colors.white.withValues(alpha: 0.25)
+                    ? AppColors.surface.withValues(alpha: 0.25)
                     : AppColors.inputFill,
                 child: Icon(
                   Icons.person,
                   size: 18,
-                  color: isActive ? Colors.white : AppColors.outline,
+                  color: isActive ? AppColors.surface : AppColors.outline,
                 ),
               ),
             ),

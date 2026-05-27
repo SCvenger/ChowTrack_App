@@ -91,7 +91,7 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
   void _navigateToWizard() {
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => const PetRegistrationWizard()),
+      MaterialPageRoute(builder: (_) => const PetRegistrationWizard(isFirstRegistration: false,)),
       (route) => false,
     );
   }
