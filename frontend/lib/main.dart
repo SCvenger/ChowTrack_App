@@ -8,6 +8,8 @@ import 'features/auth/auth_view.dart';
 import 'features/navigation/navigation_controller.dart';
 import 'features/navigation/home_shell.dart';
 import 'features/petRegistration/wizard.dart';
+import 'features/pets/controllers/pets_controller.dart';
+import 'features/profile/controllers/profile_controller.dart';
 
 void main() {
   runApp(const ChowTrackApp());
@@ -22,6 +24,8 @@ class ChowTrackApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthController()),
         ChangeNotifierProvider(create: (_) => NavigationController()),
+        ChangeNotifierProvider(create: (_) => PetsController()),
+        ChangeNotifierProvider(create: (_) => ProfileController()),
       ],
       child: MaterialApp(
         title: 'ChowTrack',
