@@ -7,6 +7,7 @@ import '../../core/services/pet_service.dart';
 import '../navigation/navigation_controller.dart';
 import '../petRegistration/models/pet_model.dart';
 import '../petRegistration/wizard.dart';
+import 'pet_detail_view.dart';
 
 class PetsView extends StatefulWidget {
   const PetsView({super.key});
@@ -83,28 +84,34 @@ class _PetsViewState extends State<PetsView> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         titleSpacing: AppTheme.marginMobile,
-        title: Column( 
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Mis mascotas', style: AppTheme.headlineMd, ),
+            Text('Mis mascotas', style: AppTheme.headlineMd),
+            if (!_isLoading && _error == null)
+              Text(
+                _pets.isEmpty
+                    ? 'Aún no tienes ninguna'
+                    : _pets.length == 1
+                        ? '1 mascota registrada'
+                        : '${_pets.length} mascotas registradas',
+                style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+              ),
           ],
         ),
         toolbarHeight: 72,
-        centerTitle: true
       ),
 
+      // ── Contenido ──────────────────────────────────────────────────
       body: _buildBody(),
 
-      //  Añadir mascota 
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 88),
-        child: FloatingActionButton(
-          onPressed: _openAddPet,
-          backgroundColor: AppColors.trustBlue,
-          shape: const CircleBorder(),
-          tooltip: 'Añadir mascota',
-          child: const Icon(Icons.add, color: Colors.white, size: 28),
-        ),
+      // ── FAB: Añadir mascota ────────────────────────────────────────
+      floatingActionButton: FloatingActionButton(
+        onPressed: _openAddPet,
+        backgroundColor: AppColors.trustBlue,
+        shape: const CircleBorder(),
+        tooltip: 'Añadir mascota',
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ),
     );
   }
@@ -125,7 +132,7 @@ class _PetsViewState extends State<PetsView> {
           104, // espacio para FAB + nav bar flotante
         ),
         itemCount: _pets.length,
-        separatorBuilder: (_, _) => AppTheme.spacer,
+        separatorBuilder: (_, __) => AppTheme.spacer,
         itemBuilder: (_, index) => _PetCard(pet: _pets[index]),
       ),
     );
@@ -145,11 +152,11 @@ class _PetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white70,
-        borderRadius: BorderRadius.circular(16), 
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha:.16),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -160,8 +167,12 @@ class _PetCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-          },
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PetDetailView(pet: pet),
+            ),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(AppTheme.gutter),
             child: Row(
@@ -216,6 +227,11 @@ class _PetCard extends StatelessWidget {
                   ),
                 ),
 
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: AppColors.outline,
+                ),
               ],
             ),
           ),
@@ -246,7 +262,7 @@ class _PetPhoto extends StatelessWidget {
             ? Image.network(
                 photoUrl!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _placeholder(),
+                errorBuilder: (_, __, ___) => _placeholder(),
               )
             : _placeholder(),
       ),
@@ -280,20 +296,20 @@ class _StatusBadge extends StatelessWidget {
     final (label, color) = switch (status) {
       'lost'  => ('Perdido', AppColors.panicRed),
       'found' => ('Encontrado', AppColors.trustBlue),
-      _       => ('Casa', AppColors.esmeraldGreen),
+      _       => ('En casa', AppColors.esmeraldGreen),
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: .12),
+        color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
         style: AppTheme.labelSm.copyWith(
           color: color,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -312,8 +328,8 @@ class _LoadingState extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.all(AppTheme.marginMobile),
       itemCount: 3,
-      separatorBuilder: (_, _) => AppTheme.spacer,
-      itemBuilder: (_, _) => const _SkeletonCard(),
+      separatorBuilder: (_, __) => AppTheme.spacer,
+      itemBuilder: (_, __) => const _SkeletonCard(),
     );
   }
 }
@@ -350,7 +366,7 @@ class _EmptyState extends StatelessWidget {
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: AppColors.trustBlue.withValues(alpha: .08),
+                color: AppColors.trustBlue.withOpacity(0.08),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -397,7 +413,7 @@ class _ErrorState extends StatelessWidget {
             Icon(
               Icons.cloud_off_outlined,
               size: 64,
-              color: AppColors.outline.withValues(alpha: .5),
+              color: AppColors.outline.withOpacity(0.5),
             ),
             AppTheme.spacerMd,
             Text(

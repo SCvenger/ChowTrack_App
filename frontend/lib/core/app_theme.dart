@@ -11,6 +11,7 @@ class AppColors {
   static const Color inputFill    = Color(0xFFF2F2F7);
   static const Color outline      = Color(0xFF737784);
   static const Color black        = Color(0xFF000000);
+  static const Color alertAmber  = Color(0xFFFFC107);
 }
 
 // ── Tema principal ─────────────────────────────────────────────────
