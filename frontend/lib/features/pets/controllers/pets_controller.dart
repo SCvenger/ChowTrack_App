@@ -1,8 +1,8 @@
 // lib/features/pets/pets_controller.dart
 
+import 'package:chowtrack/core/services/pet_service.dart';
+import 'package:chowtrack/features/petRegistration/models/pet_model.dart';
 import 'package:flutter/material.dart';
-import '../../../core/services/pet_service.dart';
-import '../../petRegistration/models/pet_model.dart';
 
 class PetsController extends ChangeNotifier {
   List<PetModel> _pets = [];
@@ -44,7 +44,28 @@ class PetsController extends ChangeNotifier {
   // (PATCH /pets/{id}/status — endpoint backend)
   // ════════════════════════════════════════════════════════════════════════
 
+  Future<void> updatePetStatus(
+    String petId,
+    String newStatus, {
+    double? lat,
+    double? lng,
+  }) async {
+    final index = _pets.indexWhere((p) => p.id == petId);
+    if (index == -1) return;
 
+    final previous = _pets[index];
+    _pets[index] = previous.copyWith(status: newStatus);
+    notifyListeners();
+
+    try {
+      await PetService.updatePetStatus(petId, newStatus, lat: lat, lng: lng);
+    } catch (e) {
+      _pets[index] = previous;
+      _error = 'No se pudo actualizar el estado.';
+      notifyListeners();
+      rethrow;
+    }
+  }
 
   // ════════════════════════════════════════════════════════════════════════
   // LIMPIAR ESTADO (logout)

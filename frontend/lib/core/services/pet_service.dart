@@ -183,6 +183,47 @@ class PetService {
         }
     }
   }
+
+  static Future<void> updatePetStatus(
+    String petId,
+    String status, {
+    double? lat,
+    double? lng,
+  }) async {
+    final token = await TokenStorage.getAccessToken();
+    if (token == null) {
+      throw const PetServiceException(
+        'No hay sesión activa',
+        detail: 'Token no encontrado',
+      );
+    }
+ 
+    final body = <String, dynamic>{'status': status};
+    if (status == 'lost' && lat != null && lng != null) {
+      body['last_seen_lat'] = lat;
+      body['last_seen_lng'] = lng;
+    }
+ 
+    final response = await http.patch(
+      Uri.parse('${ApiConfig.baseUrl}/pets/$petId/status'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 10));
+ 
+    if (response.statusCode == 200 || response.statusCode == 204) return;
+ 
+    if (response.statusCode == 401) {
+      throw const PetServiceException('Sesión expirada', detail: 'token_rejected');
+    }
+ 
+    throw PetServiceException(
+      'No se pudo actualizar el estado',
+      detail: 'status_${response.statusCode}',
+    );
+  }
 }
 
 class PetServiceException implements Exception {
@@ -194,3 +235,4 @@ class PetServiceException implements Exception {
   @override
   String toString() => 'PetServiceException: $message (detail: $detail)';
 }
+

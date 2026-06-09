@@ -1,15 +1,21 @@
 // lib/features/home/home_view.dart
-// Versión solo UI/UX — sin lógica, sin servicios, sin controllers.
-// Los valores están hardcodeados para visualización.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../core/app_theme.dart';
 import '../navigation/navigation_controller.dart';
+import '../petRegistration/models/pet_model.dart';
+import 'package:chowtrack/features/pets/controllers/pets_controller.dart';
 
-class HomeView extends StatelessWidget {
+class HomeView extends StatefulWidget {
   const HomeView({super.key});
 
+  @override
+  State<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends State<HomeView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,11 +44,7 @@ class HomeView extends StatelessWidget {
               label: 'PERDÍ A MI MASCOTA',
               icon: Icons.campaign_outlined,
               color: AppColors.panicRed,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Próximamente disponible')),
-                );
-              },
+              onTap: _onLostPetTapped,   // ← Conectado exitosamente
             ),
 
             AppTheme.spacerMd,
@@ -71,9 +73,137 @@ class HomeView extends StatelessWidget {
       ),
     );
   }
+
+  // ── LÓGICA DE NEGOCIO INTEGRADA ──
+
+  Future<void> _onLostPetTapped() async {
+    final petsController = context.read<PetsController>();
+    final pets = petsController.pets;
+   
+    if (pets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Aún no tienes mascotas registradas.'),
+          backgroundColor: AppColors.alertAmber,
+        ),
+      );
+      return;
+    }
+   
+    final candidates = pets.where((p) => !p.isLost).toList();
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Todas tus mascotas ya están marcadas como perdidas.')),
+      );
+      return;
+    }
+   
+    PetModel? selected;
+   
+    if (candidates.length == 1) {
+      final confirmed = await _confirmMarkAsLost(candidates.first);
+      if (confirmed == true) selected = candidates.first;
+    } else {
+      selected = await _showPetSelector(candidates);
+    }
+   
+    if (selected == null || !mounted) return;
+   
+    // ── Capturar GPS antes de marcar como perdida ──
+    double? lat;
+    double? lng;
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 6),
+        ),
+      );
+      lat = position.latitude;
+      lng = position.longitude;
+    } catch (_) {
+      // Sin GPS: las coordenadas quedan nulas pero el flujo continúa
+    }
+   
+    try {
+      await petsController.updatePetStatus(
+        selected.id,
+        'lost',
+        lat: lat,
+        lng: lng,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${selected.name} marcada como perdida'),
+          backgroundColor: AppColors.panicRed,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo actualizar. Inténtalo de nuevo.'),
+          backgroundColor: AppColors.panicRed,
+        ),
+      );
+    }
+  }
+
+  // Diálogo de confirmación para cuando solo hay 1 mascota
+  Future<bool?> _confirmMarkAsLost(PetModel pet) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Confirmar Reporte?'),
+        content: Text('¿Estás seguro de que deseas reportar a ${pet.name} como perdida?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirmar', style: TextStyle(color: AppColors.panicRed)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Selector (BottomSheet) para cuando hay múltiples mascotas disponibles
+  Future<PetModel?> _showPetSelector(List<PetModel> candidates) {
+    return showModalBottomSheet<PetModel>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Selecciona la mascota perdida',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const Divider(),
+              ...candidates.map((pet) => ListTile(
+                    leading: const Icon(Icons.pets, color: AppColors.outline),
+                    title: Text(pet.name),
+                    onTap: () => Navigator.pop(context, pet),
+                  )),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-// WIDGET: Card de estado del SISTEMA
+// ── WIDGETS PRIVADOS DE LA UI ──
+// (Se mantienen abajo intactos tal como los tenías)
 
 class _SystemStatusCard extends StatelessWidget {
   final String statusLabel;
@@ -107,7 +237,6 @@ class _SystemStatusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Fila superior: label + badge
           Row(
             children: [
               Expanded(
@@ -124,7 +253,6 @@ class _SystemStatusCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          // Fila inferior: pin + ubicación
           Row(
             children: [
               Icon(Icons.location_on, size: 18, color: statusColor),
@@ -175,8 +303,6 @@ class _StatusBadge extends StatelessWidget {
     );
   }
 }
-
-// WIDGET: Botón 
 
 class _ActionButton extends StatelessWidget {
   final String label;
@@ -230,10 +356,6 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-
-// WIDGET: Map Preview 
-
-
 class _MapPreview extends StatelessWidget {
   final VoidCallback onTap;
 
@@ -260,12 +382,11 @@ class _MapPreview extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           child: Stack(
             children: [
-              // Imagen del mapa (placeholder estático)
               Positioned.fill(
                 child: Image.asset(
                   'assets/images/map_placeholder.png',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (_, _, _) => Container(
                     color: const Color(0xFFE8EAEE),
                     child: const Center(
                       child: Icon(
@@ -277,8 +398,6 @@ class _MapPreview extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // Pins simulados sobre el mapa
               const Positioned(top: 60, left: 80, child: _MapPin()),
               const Positioned(top: 90, left: 140, child: _MapPin()),
               const Positioned(top: 110, left: 100, child: _MapPin()),
@@ -286,8 +405,6 @@ class _MapPreview extends StatelessWidget {
               const Positioned(top: 130, left: 220, child: _MapPin()),
               const Positioned(top: 80, left: 200, child: _MapPin()),
               const Positioned(top: 150, left: 60, child: _MapPin()),
-
-              // Botón recentrar
               Positioned(
                 top: 12,
                 right: 12,
@@ -311,8 +428,6 @@ class _MapPreview extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // Badge "Live Grid Active"
               Positioned(
                 bottom: 12,
                 left: 12,

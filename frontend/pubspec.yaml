@@ -43,6 +43,15 @@ dependencies:
   image_picker: ^1.2.2
   camera: ^0.12.0+1
 
+  # ── Ubicación ────────────────────────────────────────────────────
+  geolocator: ^13.0.2
+  geocoding: ^3.0.0
+ 
+  # ── Mapa ─────────────────────────────────────────────────────────
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  flutter_map_marker_cluster: ^1.4.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

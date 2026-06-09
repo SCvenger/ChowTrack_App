@@ -1,6 +1,7 @@
 class ApiConfig {
   
   static const String baseUrl = 'https://chowtrack.onrender.com';
+  static const String stadiaApiKey = '654011a9-4d49-49e1-8296-350b3370da56';
   static String get authEndpoint => '$baseUrl/auth';
 
   // Configuración de timeout para requests HTTP
