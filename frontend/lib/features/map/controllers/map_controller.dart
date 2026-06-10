@@ -17,13 +17,21 @@ class PetsMapController extends ChangeNotifier {
   List<MapPetModel> _allPets = [];
   String _activeFilter = 'todos';
   bool _isLoading = false;
+  bool _isInitialized = false;
   String? _error;
 
+  // GPS
+  bool _locationEnabled = false;
+  bool _locationDenied = false;
+
   // ── Getters ───────────────────────────────────────────────────────────────
-  Position?          get userPosition  => _userPosition;
-  bool               get isLoading     => _isLoading;
-  String?            get error         => _error;
-  String             get activeFilter  => _activeFilter;
+  Position? get userPosition    => _userPosition;
+  bool      get isLoading       => _isLoading;
+  bool      get isInitialized   => _isInitialized;
+  String?   get error           => _error;
+  String    get activeFilter    => _activeFilter;
+  bool      get locationEnabled => _locationEnabled;
+  bool      get locationDenied  => _locationDenied;
 
   LatLng get userLatLng => _userPosition != null
       ? LatLng(_userPosition!.latitude, _userPosition!.longitude)
@@ -35,38 +43,77 @@ class PetsMapController extends ChangeNotifier {
         _           => _allPets,
       };
 
-  // ── Inicialización ────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INICIALIZACIÓN — se llama una sola vez al montar MapView o HomeView
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> initialize() async {
+    if (_isInitialized) return; // evita doble inicialización
     await _fetchLocation();
     await loadPetsNearby();
-    _centerOnUser();
+    _isInitialized = true;
+    notifyListeners();
   }
 
-  // ── Ubicación GPS ─────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UBICACIÓN GPS — solicita permiso si hace falta
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _fetchLocation() async {
     try {
+      // 1. ¿El servicio de ubicación está activo?
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
+      if (!serviceEnabled) {
+        _locationEnabled = false;
+        notifyListeners();
+        return;
+      }
 
+      // 2. Revisar permiso
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) return;
 
+      // 3. Solicitar si no se ha concedido (pero no si está permanentemente denegado)
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      // 4. Si sigue denegado o es permanente, marcar y salir
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _locationEnabled = false;
+        _locationDenied = permission == LocationPermission.deniedForever;
+        notifyListeners();
+        return;
+      }
+
+      // 5. Obtener posición
       _userPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 8),
+          timeLimit: Duration(seconds: 10),
         ),
       );
+
+      _locationEnabled = true;
+      _locationDenied = false;
       notifyListeners();
     } catch (_) {
-      // Sin GPS → usa coordenadas de Cochabamba como fallback
+      _locationEnabled = false;
+      notifyListeners();
     }
   }
 
-  // ── Carga de mascotas cercanas ─────────────────────────────────────────────
+  /// Llamado desde HomeView cuando el usuario activa el GPS y vuelve a la app.
+  Future<void> refreshLocation() async {
+    await _fetchLocation();
+    if (_locationEnabled) {
+      await loadPetsNearby();
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CARGA DE MASCOTAS CERCANAS
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> loadPetsNearby() async {
     _isLoading = true;
@@ -88,7 +135,9 @@ class PetsMapController extends ChangeNotifier {
     }
   }
 
-  // ── Filtro ────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FILTRO
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void setFilter(String filter) {
     if (_activeFilter == filter) return;
@@ -96,27 +145,31 @@ class PetsMapController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Centrar en usuario ────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CENTRADO — llamado internamente tras obtener GPS
+  // La animación de la UI la maneja MapView con TickerProviderStateMixin
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  void _centerOnUser() {
+  void centerOnUser() {
     try {
       mapController.move(userLatLng, 14);
     } catch (_) {
-      // El mapa puede no estar listo aún — no es crítico
+      // El mapa puede no estar listo aún en la primera carga
     }
   }
 
-  void recenterMap() {
-    mapController.move(userLatLng, 14);
-  }
-
-  // ── Limpiar (logout) ──────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LIMPIAR (logout)
+  // ═══════════════════════════════════════════════════════════════════════════
 
   void clear() {
     _userPosition = null;
     _allPets = [];
     _activeFilter = 'todos';
     _isLoading = false;
+    _isInitialized = false;
+    _locationEnabled = false;
+    _locationDenied = false;
     _error = null;
     notifyListeners();
   }

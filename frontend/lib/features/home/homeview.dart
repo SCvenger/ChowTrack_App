@@ -1,12 +1,20 @@
 // lib/features/home/home_view.dart
 
+import 'package:chowtrack/features/map/controllers/map_controller.dart';
+import 'package:chowtrack/features/pets/controllers/pets_controller.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart' hide Path;
+import 'package:provider/provider.dart';
+
+import '../../core/api_config.dart';
 import '../../core/app_theme.dart';
+
 import '../navigation/navigation_controller.dart';
 import '../petRegistration/models/pet_model.dart';
-import 'package:chowtrack/features/pets/controllers/pets_controller.dart';
+
 
 class HomeView extends StatefulWidget {
   const HomeView({super.key});
@@ -17,69 +25,31 @@ class HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<HomeView> {
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.surface,
-      body: SafeArea(
-        bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            AppTheme.marginMobile,
-            AppTheme.stackMd,
-            AppTheme.marginMobile,
-            104,
-          ),
-          children: [
-            //  Card de SISTEMA 
-            const _SystemStatusCard(
-              statusLabel: 'Protegido',
-              statusColor: AppColors.esmeraldGreen,
-              locationName: 'Queru, Cochabamba',
-            ),
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Poblar PetsController compartido si aún no tiene datos
+      final petsCtrl = context.read<PetsController>();
+      if (petsCtrl.pets.isEmpty && !petsCtrl.isLoading) {
+        petsCtrl.loadPets(silent: true);
+      }
 
-            AppTheme.spacerLg,
-
-            //  Botón: PERDÍ A MI MASCOTA 
-            _ActionButton(
-              label: 'PERDÍ A MI MASCOTA',
-              icon: Icons.campaign_outlined,
-              color: AppColors.panicRed,
-              onTap: _onLostPetTapped,   // ← Conectado exitosamente
-            ),
-
-            AppTheme.spacerMd,
-
-            //  Botón: ENCONTRÉ UN PERRO 
-            _ActionButton(
-              label: 'ENCONTRÉ UN PERRO',
-              icon: Icons.pets,
-              color: AppColors.trustBlue,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Próximamente disponible')),
-                );
-              },
-            ),
-
-            AppTheme.spacerLg,
-
-            //  Mapa preview 
-            _MapPreview(
-              onTap: () =>
-                  context.read<NavigationController>().setIndex(1),
-            ),
-          ],
-        ),
-      ),
-    );
+      // Inicializar GPS + mascotas del mapa (usado también por MapView)
+      final mapCtrl = context.read<PetsMapController>();
+      if (!mapCtrl.isInitialized) {
+        mapCtrl.initialize();
+      }
+    });
   }
 
-  // ── LÓGICA DE NEGOCIO INTEGRADA ──
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACCIÓN: Marcar mascota como perdida con GPS
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<void> _onLostPetTapped() async {
     final petsController = context.read<PetsController>();
     final pets = petsController.pets;
-   
+
     if (pets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -89,42 +59,44 @@ class _HomeViewState extends State<HomeView> {
       );
       return;
     }
-   
+
     final candidates = pets.where((p) => !p.isLost).toList();
     if (candidates.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Todas tus mascotas ya están marcadas como perdidas.')),
+        const SnackBar(
+          content: Text('Todas tus mascotas ya están marcadas como perdidas.'),
+        ),
       );
       return;
     }
-   
+
     PetModel? selected;
-   
+
     if (candidates.length == 1) {
       final confirmed = await _confirmMarkAsLost(candidates.first);
       if (confirmed == true) selected = candidates.first;
     } else {
       selected = await _showPetSelector(candidates);
     }
-   
+
     if (selected == null || !mounted) return;
-   
-    // ── Capturar GPS antes de marcar como perdida ──
+
+    // Capturar GPS antes de marcar — es opcional, el flujo no se bloquea
     double? lat;
     double? lng;
     try {
-      final position = await Geolocator.getCurrentPosition(
+      final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.medium,
           timeLimit: Duration(seconds: 6),
         ),
       );
-      lat = position.latitude;
-      lng = position.longitude;
+      lat = pos.latitude;
+      lng = pos.longitude;
     } catch (_) {
-      // Sin GPS: las coordenadas quedan nulas pero el flujo continúa
+      // Sin GPS: la mascota se marca como perdida sin coordenadas
     }
-   
+
     try {
       await petsController.updatePetStatus(
         selected.id,
@@ -150,50 +122,174 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  // Diálogo de confirmación para cuando solo hay 1 mascota
   Future<bool?> _confirmMarkAsLost(PetModel pet) {
     return showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('¿Confirmar Reporte?'),
-        content: Text('¿Estás seguro de que deseas reportar a ${pet.name} como perdida?'),
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Confirmar reporte?'),
+        content: Text(
+          '¿Estás seguro de que deseas reportar a ${pet.name} como perdida?',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancelar'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirmar', style: TextStyle(color: AppColors.panicRed)),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.panicRed,
+            ),
+            child: const Text('Sí, reportar'),
           ),
         ],
       ),
     );
   }
 
-  // Selector (BottomSheet) para cuando hay múltiples mascotas disponibles
   Future<PetModel?> _showPetSelector(List<PetModel> candidates) {
     return showModalBottomSheet<PetModel>(
       context: context,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Selecciona la mascota perdida',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.inputFill,
+                borderRadius: BorderRadius.circular(999),
               ),
-              const Divider(),
-              ...candidates.map((pet) => ListTile(
-                    leading: const Icon(Icons.pets, color: AppColors.outline),
-                    title: Text(pet.name),
-                    onTap: () => Navigator.pop(context, pet),
-                  )),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(AppTheme.marginMobile),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('¿Cuál de tus mascotas?', style: AppTheme.headlineMd),
+                  AppTheme.spacerSm,
+                  ...candidates.map(
+                    (pet) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: AppColors.inputFill,
+                        backgroundImage: pet.photoUrl != null
+                            ? NetworkImage(pet.photoUrl!)
+                            : null,
+                        child: pet.photoUrl == null
+                            ? const Icon(Icons.pets,
+                                color: AppColors.trustBlue)
+                            : null,
+                      ),
+                      title: Text(pet.name, style: AppTheme.bodyMd),
+                      subtitle: pet.breed != null
+                          ? Text(
+                              pet.breed!,
+                              style: AppTheme.labelSm.copyWith(
+                                color: AppColors.outline,
+                              ),
+                            )
+                          : null,
+                      onTap: () => Navigator.pop(ctx, pet),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
+  Widget build(BuildContext context) {
+    final mapCtrl = context.watch<PetsMapController>();
+
+    return Scaffold(
+      backgroundColor: AppColors.surface,
+      body: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          color: AppColors.trustBlue,
+          onRefresh: () async {
+            await context.read<PetsController>().loadPets();
+            await mapCtrl.loadPetsNearby();
+          },
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.marginMobile,
+              AppTheme.stackMd,
+              AppTheme.marginMobile,
+              104,
+            ),
+            children: [
+              // Banner GPS desactivado
+              if (!mapCtrl.locationEnabled && mapCtrl.isInitialized) ...[
+                _GpsBanner(
+                  onActivate: () async {
+                    await Geolocator.openLocationSettings();
+                    await mapCtrl.refreshLocation();
+                  },
+                ),
+                AppTheme.spacerMd,
+              ],
+
+              // Card SISTEMA
+              _SystemStatusCard(
+                statusLabel: mapCtrl.locationEnabled ? 'Protegido' : 'Alerta',
+                statusColor: mapCtrl.locationEnabled
+                    ? AppColors.esmeraldGreen
+                    : AppColors.alertAmber,
+                locationName: mapCtrl.locationEnabled
+                    ? 'GPS activo'
+                    : 'Ubicación desactivada',
+              ),
+
+              AppTheme.spacerLg,
+
+              // Botón PERDÍ A MI MASCOTA
+              _ActionButton(
+                label: 'PERDÍ A MI MASCOTA',
+                icon: Icons.campaign_outlined,
+                color: AppColors.panicRed,
+                onTap: _onLostPetTapped,
+              ),
+
+              AppTheme.spacerMd,
+
+              // Botón ENCONTRÉ UN PERRO
+              _ActionButton(
+                label: 'ENCONTRÉ UN PERRO',
+                icon: Icons.pets,
+                color: AppColors.trustBlue,
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Próximamente disponible'),
+                    ),
+                  );
+                },
+              ),
+
+              AppTheme.spacerLg,
+
+              // Mapa real (preview)
+              _MapPreview(
+                mapCtrl: mapCtrl,
+                onTap: () =>
+                    context.read<NavigationController>().setIndex(1),
+              ),
             ],
           ),
         ),
@@ -202,8 +298,53 @@ class _HomeViewState extends State<HomeView> {
   }
 }
 
-// ── WIDGETS PRIVADOS DE LA UI ──
-// (Se mantienen abajo intactos tal como los tenías)
+// ═════════════════════════════════════════════════════════════════════════════
+// GPS BANNER
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _GpsBanner extends StatelessWidget {
+  final VoidCallback onActivate;
+
+  const _GpsBanner({required this.onActivate});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.alertAmber.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.alertAmber.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off,
+              color: AppColors.alertAmber, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Activa tu ubicación para protección completa',
+              style: AppTheme.labelSm.copyWith(
+                color: AppColors.alertAmber,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onActivate,
+            child: const Text('Activar'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SYSTEM STATUS CARD
+// ═════════════════════════════════════════════════════════════════════════════
 
 class _SystemStatusCard extends StatelessWidget {
   final String statusLabel;
@@ -304,6 +445,10 @@ class _StatusBadge extends StatelessWidget {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ACTION BUTTON
+// ═════════════════════════════════════════════════════════════════════════════
+
 class _ActionButton extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -356,78 +501,112 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// MAP PREVIEW — mapa real no interactivo
+// ═════════════════════════════════════════════════════════════════════════════
+
 class _MapPreview extends StatelessWidget {
+  final PetsMapController mapCtrl;
   final VoidCallback onTap;
 
-  const _MapPreview({required this.onTap});
+  const _MapPreview({required this.mapCtrl, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        height: 200,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: const Color(0xFFE8EAEE),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 200,
           child: Stack(
             children: [
-              Positioned.fill(
-                child: Image.asset(
-                  'assets/images/map_placeholder.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
-                    color: const Color(0xFFE8EAEE),
-                    child: const Center(
-                      child: Icon(
-                        Icons.map_outlined,
-                        size: 48,
-                        color: AppColors.outline,
-                      ),
-                    ),
+              // Mapa real no interactivo
+              FlutterMap(
+                options: MapOptions(
+                  initialCenter: mapCtrl.userLatLng,
+                  initialZoom: 14,
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
                   ),
                 ),
-              ),
-              const Positioned(top: 60, left: 80, child: _MapPin()),
-              const Positioned(top: 90, left: 140, child: _MapPin()),
-              const Positioned(top: 110, left: 100, child: _MapPin()),
-              const Positioned(top: 120, left: 180, child: _MapPin()),
-              const Positioned(top: 130, left: 220, child: _MapPin()),
-              const Positioned(top: 80, left: 200, child: _MapPin()),
-              const Positioned(top: 150, left: 60, child: _MapPin()),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 6,
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tiles.stadiamaps.com/tiles/alidade_smooth'
+                        '/{z}/{x}/{y}@2x.png?api_key=${ApiConfig.stadiaApiKey}',
+                    userAgentPackageName: 'com.example.chowtrack',
+                    tileProvider: CancellableNetworkTileProvider(),
+                  ),
+                  // Radio de búsqueda
+                  CircleLayer(
+                    circles: [
+                      CircleMarker(
+                        point: mapCtrl.userLatLng,
+                        radius: 5000,
+                        useRadiusInMeter: true,
+                        color: AppColors.trustBlue.withValues(alpha: 0.05),
+                        borderColor:
+                            AppColors.trustBlue.withValues(alpha: 0.2),
+                        borderStrokeWidth: 1,
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.my_location,
-                    size: 18,
-                    color: AppColors.trustBlue,
+                  // Marcador del usuario
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: mapCtrl.userLatLng,
+                        width: 36,
+                        height: 36,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.trustBlue,
+                            border:
+                                Border.all(color: Colors.white, width: 2.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.trustBlue
+                                    .withValues(alpha: 0.4),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                  // Pins de mascotas cercanas
+                  MarkerLayer(
+                    markers: mapCtrl.filteredPets.map((pet) {
+                      return Marker(
+                        point: pet.latLng,
+                        width: 28,
+                        height: 28,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: pet.markerColor,
+                            border:
+                                Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.pets,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
+
+              // Overlay tapeable transparente (intercepta gestos del mapa)
+              Positioned.fill(child: Container(color: Colors.transparent)),
+
+              // Badge "Live Grid Active"
               Positioned(
                 bottom: 12,
                 left: 12,
@@ -454,9 +633,35 @@ class _MapPreview extends StatelessWidget {
                       const SizedBox(width: 6),
                       Text(
                         'Live Grid Active',
-                        style: AppTheme.labelSm.copyWith(color: Colors.white),
+                        style:
+                            AppTheme.labelSm.copyWith(color: Colors.white),
                       ),
                     ],
+                  ),
+                ),
+              ),
+
+              // Botón de recentrar
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.my_location,
+                    size: 17,
+                    color: AppColors.trustBlue,
                   ),
                 ),
               ),
@@ -464,19 +669,6 @@ class _MapPreview extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _MapPin extends StatelessWidget {
-  const _MapPin();
-
-  @override
-  Widget build(BuildContext context) {
-    return Icon(
-      Icons.location_pin,
-      size: 24,
-      color: AppColors.outline.withValues(alpha: 0.7),
     );
   }
 }

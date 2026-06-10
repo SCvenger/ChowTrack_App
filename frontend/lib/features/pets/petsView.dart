@@ -1,13 +1,14 @@
 // lib/features/pets/pets_view.dart
 
+import 'package:chowtrack/features/petRegistration/wizard.dart';
+import 'package:chowtrack/features/pets/controllers/pets_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
-import '../../core/services/pet_service.dart';
 import '../navigation/navigation_controller.dart';
 import '../petRegistration/models/pet_model.dart';
-import '../petRegistration/wizard.dart';
 import 'pet_detail_view.dart';
+
 
 class PetsView extends StatefulWidget {
   const PetsView({super.key});
@@ -17,42 +18,16 @@ class PetsView extends StatefulWidget {
 }
 
 class _PetsViewState extends State<PetsView> {
-  List<PetModel> _pets = [];
-  bool _isLoading = true;
-  String? _error;
-
   @override
   void initState() {
     super.initState();
-    _loadPets();
-  }
-
-  Future<void> _loadPets() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctrl = context.read<PetsController>();
+      // Carga solo si el estado está vacío y no hay carga en curso
+      if (ctrl.pets.isEmpty && !ctrl.isLoading) {
+        ctrl.loadPets();
+      }
     });
-
-    try {
-      final pets = await PetService.getMyPets();
-      if (!mounted) return;
-      setState(() {
-        _pets = pets;
-        _isLoading = false;
-      });
-    } on PetServiceException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _isLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'No se pudieron cargar tus mascotas.';
-        _isLoading = false;
-      });
-    }
   }
 
   Future<void> _openAddPet() async {
@@ -62,23 +37,24 @@ class _PetsViewState extends State<PetsView> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const PetRegistrationWizard(
-          isFirstRegistration: false,
-        ),
+        builder: (_) => const PetRegistrationWizard(isFirstRegistration: false),
       ),
     );
 
     if (!mounted) return;
     navController.showNavBar();
-    _loadPets(); // Refresca la lista al volver del wizard
+    // Refresca desde el controller compartido
+    context.read<PetsController>().loadPets();
   }
 
   @override
   Widget build(BuildContext context) {
+    final ctrl = context.watch<PetsController>();
+
     return Scaffold(
       backgroundColor: AppColors.surface,
 
-      // ── Header ─────────────────────────────────────────────────────
+      // ── Header ──────────────────────────────────────────────────────
       appBar: AppBar(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
@@ -88,13 +64,13 @@ class _PetsViewState extends State<PetsView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Mis mascotas', style: AppTheme.headlineMd),
-            if (!_isLoading && _error == null)
+            if (!ctrl.isLoading && !ctrl.hasError)
               Text(
-                _pets.isEmpty
+                ctrl.pets.isEmpty
                     ? 'Aún no tienes ninguna'
-                    : _pets.length == 1
+                    : ctrl.pets.length == 1
                         ? '1 mascota registrada'
-                        : '${_pets.length} mascotas registradas',
+                        : '${ctrl.pets.length} mascotas registradas',
                 style: AppTheme.labelSm.copyWith(color: AppColors.outline),
               ),
           ],
@@ -102,38 +78,46 @@ class _PetsViewState extends State<PetsView> {
         toolbarHeight: 72,
       ),
 
-      // ── Contenido ──────────────────────────────────────────────────
-      body: _buildBody(),
+      // ── Contenido ────────────────────────────────────────────────────
+      body: _buildBody(ctrl),
 
-      // ── FAB: Añadir mascota ────────────────────────────────────────
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddPet,
-        backgroundColor: AppColors.trustBlue,
-        shape: const CircleBorder(),
-        tooltip: 'Añadir mascota',
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
+      // ── FAB ──────────────────────────────────────────────────────────
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 88),
+        child: FloatingActionButton(
+          onPressed: _openAddPet,
+          backgroundColor: AppColors.trustBlue,
+          shape: const CircleBorder(),
+          tooltip: 'Añadir mascota',
+          child: const Icon(Icons.add, color: Colors.white, size: 28),
+        ),
       ),
     );
   }
 
-  Widget _buildBody() {
-    if (_isLoading) return const _LoadingState();
-    if (_error != null) return _ErrorState(message: _error!, onRetry: _loadPets);
-    if (_pets.isEmpty) return _EmptyState(onAddPet: _openAddPet);
+  Widget _buildBody(PetsController ctrl) {
+    if (ctrl.isLoading) return const _LoadingState();
+    if (ctrl.hasError) {
+      return _ErrorState(
+        message: ctrl.error!,
+        onRetry: () => context.read<PetsController>().loadPets(),
+      );
+    }
+    if (ctrl.pets.isEmpty) return _EmptyState(onAddPet: _openAddPet);
 
     return RefreshIndicator(
       color: AppColors.trustBlue,
-      onRefresh: _loadPets,
+      onRefresh: () => context.read<PetsController>().loadPets(),
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(
           AppTheme.marginMobile,
           AppTheme.gutter,
           AppTheme.marginMobile,
-          104, // espacio para FAB + nav bar flotante
+          104,
         ),
-        itemCount: _pets.length,
+        itemCount: ctrl.pets.length,
         separatorBuilder: (_, __) => AppTheme.spacer,
-        itemBuilder: (_, index) => _PetCard(pet: _pets[index]),
+        itemBuilder: (_, index) => _PetCard(pet: ctrl.pets[index]),
       ),
     );
   }
@@ -156,7 +140,7 @@ class _PetCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -169,20 +153,14 @@ class _PetCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: () => Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => PetDetailView(pet: pet),
-            ),
+            MaterialPageRoute(builder: (_) => PetDetailView(pet: pet)),
           ),
           child: Padding(
             padding: const EdgeInsets.all(AppTheme.gutter),
             child: Row(
               children: [
-                // ── Foto ────────────────────────────────────────────
                 _PetPhoto(photoUrl: pet.photoUrl, name: pet.name),
-
                 const SizedBox(width: AppTheme.gutter),
-
-                // ── Datos ───────────────────────────────────────────
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -201,23 +179,19 @@ class _PetCard extends StatelessWidget {
                           _StatusBadge(status: pet.status),
                         ],
                       ),
-
-                      const SizedBox(height: 4),
-
-                      if (pet.breed != null)
+                      if (pet.breed != null) ...[
+                        const SizedBox(height: 4),
                         Text(
                           pet.breed!,
                           style: AppTheme.labelSm.copyWith(
                             color: AppColors.outline,
                           ),
                         ),
-
+                      ],
                       if (pet.ageYears != null) ...[
                         const SizedBox(height: 2),
                         Text(
-                          pet.ageYears == 1
-                              ? '1 año'
-                              : '${pet.ageYears} años',
+                          pet.ageYears == 1 ? '1 año' : '${pet.ageYears} años',
                           style: AppTheme.labelSm.copyWith(
                             color: AppColors.outline,
                           ),
@@ -226,12 +200,8 @@ class _PetCard extends StatelessWidget {
                     ],
                   ),
                 ),
-
-                const Icon(
-                  Icons.arrow_forward_ios,
-                  size: 14,
-                  color: AppColors.outline,
-                ),
+                const Icon(Icons.arrow_forward_ios,
+                    size: 14, color: AppColors.outline),
               ],
             ),
           ),
@@ -242,7 +212,7 @@ class _PetCard extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// PET PHOTO — Foto o placeholder con inicial del nombre
+// PET PHOTO
 // ═════════════════════════════════════════════════════════════════════════════
 
 class _PetPhoto extends StatelessWidget {
@@ -262,7 +232,7 @@ class _PetPhoto extends StatelessWidget {
             ? Image.network(
                 photoUrl!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _placeholder(),
+                errorBuilder: (_, _, _) => _placeholder(),
               )
             : _placeholder(),
       ),
@@ -283,7 +253,7 @@ class _PetPhoto extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// STATUS BADGE — chip de estado de la mascota
+// STATUS BADGE
 // ═════════════════════════════════════════════════════════════════════════════
 
 class _StatusBadge extends StatelessWidget {
@@ -302,7 +272,7 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -317,7 +287,7 @@ class _StatusBadge extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// ESTADOS DE LA PANTALLA
+// ESTADOS DE PANTALLA
 // ═════════════════════════════════════════════════════════════════════════════
 
 class _LoadingState extends StatelessWidget {
@@ -329,21 +299,12 @@ class _LoadingState extends StatelessWidget {
       padding: const EdgeInsets.all(AppTheme.marginMobile),
       itemCount: 3,
       separatorBuilder: (_, __) => AppTheme.spacer,
-      itemBuilder: (_, __) => const _SkeletonCard(),
-    );
-  }
-}
-
-class _SkeletonCard extends StatelessWidget {
-  const _SkeletonCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 104,
-      decoration: BoxDecoration(
-        color: AppColors.inputFill,
-        borderRadius: BorderRadius.circular(16),
+      itemBuilder: (_, __) => Container(
+        height: 104,
+        decoration: BoxDecoration(
+          color: AppColors.inputFill,
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
     );
   }
@@ -366,14 +327,11 @@ class _EmptyState extends StatelessWidget {
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: AppColors.trustBlue.withOpacity(0.08),
+                color: AppColors.trustBlue.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.pets,
-                size: 48,
-                color: AppColors.trustBlue,
-              ),
+              child: const Icon(Icons.pets,
+                  size: 48, color: AppColors.trustBlue),
             ),
             AppTheme.spacerMd,
             Text('Aún no tienes mascotas', style: AppTheme.headlineMd),
@@ -410,11 +368,9 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.cloud_off_outlined,
-              size: 64,
-              color: AppColors.outline.withOpacity(0.5),
-            ),
+            Icon(Icons.cloud_off_outlined,
+                size: 64,
+                color: AppColors.outline.withValues(alpha: 0.5)),
             AppTheme.spacerMd,
             Text(
               message,

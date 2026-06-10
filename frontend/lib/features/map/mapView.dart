@@ -3,12 +3,14 @@
 import 'package:chowtrack/features/map/controllers/map_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:provider/provider.dart';
 
 import '../../core/api_config.dart';
 import '../../core/app_theme.dart';
 import 'models/map_pet_model.dart';
+
 
 class MapView extends StatefulWidget {
   const MapView({super.key});
@@ -17,24 +19,95 @@ class MapView extends StatefulWidget {
   State<MapView> createState() => _MapViewState();
 }
 
-class _MapViewState extends State<MapView> {
+// TickerProviderStateMixin necesario para la animación de centrado
+class _MapViewState extends State<MapView> with TickerProviderStateMixin {
+  AnimationController? _moveController;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PetsMapController>().initialize();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final ctrl = context.read<PetsMapController>();
+      await ctrl.initialize();
+      if (mounted) ctrl.centerOnUser();
     });
   }
 
   @override
+  void dispose() {
+    _moveController?.dispose();
+    super.dispose();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ANIMACIÓN DE CENTRADO — desliza suavemente hacia la posición del usuario
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  void _animatedMove(LatLng destination, double zoom) {
+    final mapCtrl = context.read<PetsMapController>().mapController;
+
+    // Cancelar animación previa si el usuario toca rápido
+    _moveController?.stop();
+    _moveController?.dispose();
+
+    final latTween = Tween<double>(
+      begin: mapCtrl.camera.center.latitude,
+      end: destination.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: mapCtrl.camera.center.longitude,
+      end: destination.longitude,
+    );
+    final zoomTween = Tween<double>(
+      begin: mapCtrl.camera.zoom,
+      end: zoom,
+    );
+
+    _moveController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    final animation = CurvedAnimation(
+      parent: _moveController!,
+      curve: Curves.easeInOut,
+    );
+
+    _moveController!.addListener(() {
+      mapCtrl.move(
+        LatLng(
+          latTween.evaluate(animation),
+          lngTween.evaluate(animation),
+        ),
+        zoomTween.evaluate(animation),
+      );
+    });
+
+    _moveController!.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        _moveController?.dispose();
+        _moveController = null;
+      }
+    });
+
+    _moveController!.forward();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<PetsMapController>();
+    final topPadding = MediaQuery.of(context).padding.top;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
       body: Stack(
         children: [
-          // ── Mapa ────────────────────────────────────────────────────
+          // ── Mapa ──────────────────────────────────────────────────────
           FlutterMap(
             mapController: ctrl.mapController,
             options: MapOptions(
@@ -47,12 +120,14 @@ class _MapViewState extends State<MapView> {
               ),
             ),
             children: [
-              // Tiles Stadia Maps
+              // Tiles Stadia Maps con CancellableNetworkTileProvider
+              // (resuelve problemas de carga por WiFi en Android)
               TileLayer(
                 urlTemplate:
                     'https://tiles.stadiamaps.com/tiles/alidade_smooth'
                     '/{z}/{x}/{y}@2x.png?api_key=${ApiConfig.stadiaApiKey}',
                 userAgentPackageName: 'com.example.chowtrack',
+                tileProvider: CancellableNetworkTileProvider(),
               ),
 
               // Radio de búsqueda 5 km
@@ -99,53 +174,55 @@ class _MapViewState extends State<MapView> {
             ],
           ),
 
-          // ── Overlay: chips de filtro ─────────────────────────────────
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Center(
-                child: _FilterChips(
-                  active: ctrl.activeFilter,
-                  onChanged: ctrl.setFilter,
+          // ── Overlay superior: chips + badges apilados en columna ───────
+          Positioned(
+            top: topPadding + 12,
+            left: 16,
+            right: 16,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Chips de filtro — siempre visibles arriba
+                Center(
+                  child: _FilterChips(
+                    active: ctrl.activeFilter,
+                    onChanged: ctrl.setFilter,
+                  ),
                 ),
-              ),
+
+                // Badge de carga — debajo de los chips
+                if (ctrl.isLoading) ...[
+                  const SizedBox(height: 8),
+                  const Center(child: _LoadingBadge()),
+                ],
+
+                // Badge de error — debajo de los chips
+                if (ctrl.error != null && !ctrl.isLoading) ...[
+                  const SizedBox(height: 8),
+                  Center(
+                    child: _ErrorBadge(
+                      message: ctrl.error!,
+                      onRetry: ctrl.loadPetsNearby,
+                    ),
+                  ),
+                ],
+
+                // Badge de GPS desactivado
+                if (!ctrl.locationEnabled && !ctrl.isLoading) ...[
+                  const SizedBox(height: 8),
+                  const Center(child: _GpsOffBadge()),
+                ],
+              ],
             ),
           ),
 
-          // ── Overlay: indicador de carga ──────────────────────────────
-          if (ctrl.isLoading)
-            const SafeArea(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: EdgeInsets.only(top: 64),
-                  child: _LoadingBadge(),
-                ),
-              ),
-            ),
-
-          // ── Overlay: error ───────────────────────────────────────────
-          if (ctrl.error != null && !ctrl.isLoading)
-            SafeArea(
-              child: Align(
-                alignment: Alignment.topCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 64),
-                  child: _ErrorBadge(
-                    message: ctrl.error!,
-                    onRetry: ctrl.loadPetsNearby,
-                  ),
-                ),
-              ),
-            ),
-
-          // ── Botón recentrar (derecha) ─────────────────────────────────
+          // ── Botón recentrar con animación (derecha) ───────────────────
           Positioned(
             right: 16,
             bottom: 88 + 16 + bottomPadding,
             child: _MapFab(
               icon: Icons.my_location,
-              onTap: ctrl.recenterMap,
+              onTap: () => _animatedMove(ctrl.userLatLng, 14),
             ),
           ),
 
@@ -300,7 +377,7 @@ class _PinTailPainter extends CustomPainter {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// FILTROS
+// FILTROS — chips flotantes en la parte superior
 // ═════════════════════════════════════════════════════════════════════════════
 
 class _FilterChips extends StatelessWidget {
@@ -428,6 +505,110 @@ class _MapFab extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// BADGES de estado
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _LoadingBadge extends StatelessWidget {
+  const _LoadingBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.trustBlue,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Cargando mascotas cercanas...',
+            style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorBadge extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorBadge({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onRetry,
+      child: _Badge(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off, color: AppColors.panicRed, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              'Sin datos · Tocar para reintentar',
+              style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GpsOffBadge extends StatelessWidget {
+  const _GpsOffBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return _Badge(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.location_off, color: AppColors.alertAmber, size: 16),
+          const SizedBox(width: 8),
+          Text(
+            'Ubicación desactivada',
+            style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Badge extends StatelessWidget {
+  final Widget child;
+
+  const _Badge({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 6,
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // BOTTOM SHEET — ficha real de mascota
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -462,7 +643,6 @@ class _PetBottomSheet extends StatelessWidget {
             padding: const EdgeInsets.all(AppTheme.marginMobile),
             child: Row(
               children: [
-                // Avatar
                 Container(
                   width: 64,
                   height: 64,
@@ -477,10 +657,7 @@ class _PetBottomSheet extends StatelessWidget {
                         : Icon(Icons.pets, color: pet.markerColor, size: 28),
                   ),
                 ),
-
                 const SizedBox(width: 16),
-
-                // Info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,7 +717,6 @@ class _PetBottomSheet extends StatelessWidget {
                     ],
                   ),
                 ),
-
                 FilledButton(
                   onPressed: () => Navigator.pop(context),
                   style: FilledButton.styleFrom(
@@ -556,87 +732,6 @@ class _PetBottomSheet extends StatelessWidget {
           ),
           SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
         ],
-      ),
-    );
-  }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// BADGES de estado (carga / error)
-// ═════════════════════════════════════════════════════════════════════════════
-
-class _LoadingBadge extends StatelessWidget {
-  const _LoadingBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 6,
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.trustBlue,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Cargando mascotas cercanas...',
-            style: AppTheme.labelSm.copyWith(color: AppColors.outline),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ErrorBadge extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorBadge({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onRetry,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 6,
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off, color: AppColors.panicRed, size: 16),
-            const SizedBox(width: 8),
-            Text(
-              'Sin datos · Tocar para reintentar',
-              style: AppTheme.labelSm.copyWith(color: AppColors.outline),
-            ),
-          ],
-        ),
       ),
     );
   }
