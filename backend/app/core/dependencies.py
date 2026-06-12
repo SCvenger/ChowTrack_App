@@ -1,22 +1,18 @@
+# app/core/dependencies.py
+
 # pyrefly: ignore [missing-import]
-from fastapi import Header
+from fastapi import Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.errors import ChowTrackException
 from app.database.supabase_client import supabase_anon
 
+bearer_scheme = HTTPBearer()
 
 async def get_current_user_id(
-    authorization: str = Header(..., description="Bearer <access_token>")
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> str:
-
     try:
-        if not authorization or not authorization.startswith("Bearer "):
-            raise ChowTrackException(
-                status_code=401,
-                message="Token de autorización requerido",
-                detail="missing_bearer_prefix",
-            )
-
-        token = authorization.removeprefix("Bearer ").strip()
+        token = credentials.credentials
 
         if not token:
             raise ChowTrackException(
@@ -25,7 +21,6 @@ async def get_current_user_id(
                 detail="empty_token",
             )
 
-        # Validar el JWT contra Supabase Auth
         user_response = supabase_anon.auth.get_user(token)
 
         if not user_response or not user_response.user:
@@ -45,5 +40,3 @@ async def get_current_user_id(
             message="No autorizado",
             detail=str(e),
         )
-
-
