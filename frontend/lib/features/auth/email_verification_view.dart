@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:chowtrack/core/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../petRegistration/wizard.dart';
 import 'auth_controller.dart';
 
 class EmailVerificationView extends StatefulWidget {
@@ -48,7 +47,7 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
 
       if (isVerified) {
         _autoCheckTimer?.cancel();
-        _navigateToWizard();
+        _returnToRoot();
       }
     } catch (_) {
       // Silenciar errores de background
@@ -70,7 +69,7 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
 
       if (isVerified) {
         _autoCheckTimer?.cancel();
-        _navigateToWizard();
+        _returnToRoot();
       } else {
         _showPendingDialog();
       }
@@ -88,12 +87,11 @@ class _EmailVerificationViewState extends State<EmailVerificationView> {
     }
   }
 
-  void _navigateToWizard() {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const PetRegistrationWizard(isFirstRegistration: false,)),
-      (route) => false,
-    );
+  // Al verificar, el AuthController ya cambió a estado autenticado:
+  // el Consumer de main.dart reemplaza la pantalla raíz por el wizard.
+  // Solo hay que cerrar esta vista (y las que estén encima).
+  void _returnToRoot() {
+    Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   void _showPendingDialog() {

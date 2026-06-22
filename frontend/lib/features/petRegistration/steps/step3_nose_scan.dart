@@ -6,11 +6,15 @@ import '../widgets/progress_indicator.dart';
 
 class Step3NoseScan extends StatefulWidget {
   final Function(File?) onComplete;
+
+  /// Retrocede al paso anterior del wizard (no cierra el wizard).
+  final VoidCallback onBack;
   final String petName;
 
   const Step3NoseScan({
     super.key,
     required this.onComplete,
+    required this.onBack,
     required this.petName,
   });
 
@@ -19,10 +23,12 @@ class Step3NoseScan extends StatefulWidget {
 }
 
 class _Step3NoseScanState extends State<Step3NoseScan> {
-  late CameraController _cameraController;
+  // Nullable: si la cámara falla (permiso denegado, emulador sin cámara),
+  // se muestra una UI de error en lugar de crashear con LateInitializationError
+  CameraController? _cameraController;
   late Future<void> _initializeCamera;
   bool _isScanning = false;
-  XFile? _capturedPhoto;
+  bool _cameraFailed = false;
 
   @override
   void initState() {
@@ -33,51 +39,49 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
   Future<void> _initCamera() async {
     try {
       final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        throw Exception('no_cameras_available');
+      }
+
       final backCamera = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
 
-      _cameraController = CameraController(
+      final controller = CameraController(
         backCamera,
         ResolutionPreset.high,
         enableAudio: false,
       );
 
-      await _cameraController.initialize();
+      await controller.initialize();
 
-      if (!mounted) return;
-      setState(() {});
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() => _cameraController = controller);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Error al acceder a la cámara',
-              style: AppTheme.bodyMd.copyWith(color: Colors.white),
-            ),
-            backgroundColor: AppColors.panicRed,
-          ),
-        );
+        setState(() => _cameraFailed = true);
       }
     }
   }
 
   Future<void> _capturePhoto() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized) return;
+
     try {
       setState(() => _isScanning = true);
 
-      final photo = await _cameraController.takePicture();
-
-      setState(() {
-        _capturedPhoto = photo;
-        _isScanning = false;
-      });
+      final photo = await controller.takePicture();
 
       // Simulacion del escaneo
       await Future.delayed(const Duration(seconds: 2));
 
       if (mounted) {
+        setState(() => _isScanning = false);
         widget.onComplete(File(photo.path));
       }
     } catch (e) {
@@ -131,7 +135,7 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
 
   @override
   void dispose() {
-    _cameraController.dispose();
+    _cameraController?.dispose();
     super.dispose();
   }
 
@@ -141,50 +145,123 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
       body: FutureBuilder<void>(
         future: _initializeCamera,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            return Stack(
-              children: [
-                CameraPreview(_cameraController),
-                _buildCameraOverlay(),
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.black.withValues(alpha: 0.3),
-                            ),
-                            child: const Icon(
-                              Icons.arrow_back,
+          // Cámara no disponible → UI de error con opción de continuar
+          if (_cameraFailed ||
+              _cameraController == null ||
+              !_cameraController!.value.isInitialized) {
+            return _buildCameraError();
+          }
+
+          return Stack(
+            children: [
+              CameraPreview(_cameraController!),
+              _buildCameraOverlay(),
+
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      GestureDetector(
+                        onTap: widget.onBack,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.black.withValues(alpha: 0.3),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const ProgressIndicatorr(currentStep: 3),
+                      GestureDetector(
+                        onTap: _showSkipDialog,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: Text(
+                            'Saltar',
+                            style: AppTheme.labelLg.copyWith(
                               color: Colors.white,
                             ),
                           ),
                         ),
-                        const ProgressIndicatorr(currentStep: 3),
-                        GestureDetector(
-                          onTap: _showSkipDialog,
-                          child: Container(
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Bottom controls
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SafeArea(
+                  child: Padding(
+                    padding: EdgeInsets.all(AppTheme.marginMobile),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Estado
+                        if (_isScanning)
+                          Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
-                              vertical: 12,
+                              vertical: 10,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.3),
+                              color: AppColors.esmeraldGreen,
                               borderRadius: BorderRadius.circular(24),
                             ),
-                            child: Text(
-                              'Saltar',
-                              style: AppTheme.labelLg.copyWith(
-                                color: Colors.white,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'ESCANEANDO...',
+                                  style: AppTheme.labelLg.copyWith(
+                                    color: Colors.white,
+                                    letterSpacing: 0.05 * 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (!_isScanning) const SizedBox(height: 40),
+
+                        // Botón capturar
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _isScanning ? null : _capturePhoto,
+                            icon: const Icon(Icons.camera_alt),
+                            label: Text(
+                              'Capturar Huella',
+                              style: AppTheme.labelLg.copyWith(color: Colors.white),
                             ),
                           ),
                         ),
@@ -192,78 +269,73 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
                     ),
                   ),
                 ),
-
-                // Bottom controls
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: SafeArea(
-                    child: Padding(
-                      padding: EdgeInsets.all(AppTheme.marginMobile),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Estado
-                          if (_isScanning)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.esmeraldGreen,
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation(
-                                        Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'ESCANEANDO...',
-                                    style: AppTheme.labelLg.copyWith(
-                                      color: Colors.white,
-                                      letterSpacing: 0.05 * 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (!_isScanning) const SizedBox(height: 40),
-
-                          // Botón capturar
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton.icon(
-                              onPressed: _isScanning ? null : _capturePhoto,
-                              icon: const Icon(Icons.camera_alt),
-                              label: Text(
-                                'Capturar Huella',
-                                style: AppTheme.labelLg.copyWith(color: Colors.white),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          } else {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
+              ),
+            ],
+          );
         },
+      ),
+    );
+  }
+
+  // UI cuando la cámara no está disponible — permite volver o continuar
+  Widget _buildCameraError() {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.all(AppTheme.marginMobile),
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: widget.onBack,
+              ),
+            ),
+            const Spacer(),
+            const Icon(
+              Icons.no_photography_outlined,
+              size: 72,
+              color: AppColors.outline,
+            ),
+            SizedBox(height: AppTheme.stackMd),
+            Text(
+              'No se pudo acceder a la cámara',
+              textAlign: TextAlign.center,
+              style: AppTheme.headlineMd,
+            ),
+            SizedBox(height: AppTheme.stackSm),
+            Text(
+              'Revisa los permisos de cámara o continúa sin el escaneo. '
+              'Podrás agregarlo después.',
+              textAlign: TextAlign.center,
+              style: AppTheme.bodyMd.copyWith(color: AppColors.outline),
+            ),
+            const Spacer(),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => widget.onComplete(null),
+                child: Text(
+                  'Continuar sin escaneo',
+                  style: AppTheme.labelLg.copyWith(color: Colors.white),
+                ),
+              ),
+            ),
+            SizedBox(height: AppTheme.stackSm),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  setState(() {
+                    _cameraFailed = false;
+                    _initializeCamera = _initCamera();
+                  });
+                },
+                child: Text('Reintentar', style: AppTheme.labelLg),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

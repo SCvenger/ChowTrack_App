@@ -136,7 +136,7 @@ Endpoint Clave (Ejemplo):
 
 - https://api.brain.ai/v2/predict/nose-match
 
-Datos Necesarios:
+Datos Necesarios
 
 ```JSON
 {

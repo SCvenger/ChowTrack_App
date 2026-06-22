@@ -8,9 +8,13 @@ import '../widgets/breed_dropdown.dart';
 class Step1PetData extends StatefulWidget {
   final Function(Map<String, dynamic>) onComplete;
 
+  /// Cierra el wizard. Es null en el primer registro (no hay a dónde volver).
+  final VoidCallback? onBack;
+
   const Step1PetData({
     super.key,
     required this.onComplete,
+    this.onBack,
   });
 
   @override
@@ -57,10 +61,13 @@ class _Step1PetDataState extends State<Step1PetData> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
+        automaticallyImplyLeading: false,
+        leading: widget.onBack != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: widget.onBack,
+              )
+            : null,
         title: Text('Chow-Track', style: AppTheme.headlineMd),
         centerTitle: true,
       ),

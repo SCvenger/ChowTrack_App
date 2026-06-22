@@ -1,21 +1,3 @@
-# tests/registro.py
-"""
-═══════════════════════════════════════════════════════════════════════════
-TEST DE REGISTRO — Registra una mascota con 3 fotos de ángulos distintos
-═══════════════════════════════════════════════════════════════════════════
-
-USO:
-  1. Coloca 3 fotos de la nariz del MISMO perro en esta carpeta:
-       - frontal.jpg
-       - izquierda.jpg
-       - derecha.jpg
-  2. Edita config.py con tu TOKEN y PET_ID
-  3. Ejecuta:  python registro.py
-
-Las 3 fotos deben ser del mismo perro, tomadas desde ángulos ligeramente
-diferentes para dar al sistema un barrido más completo de la trufa.
-"""
-
 import base64
 import json
 import os
@@ -28,9 +10,9 @@ from config import BASE_URL, TOKEN, PET_ID
 
 # ── Fotos a registrar: (archivo, photo_index, etiqueta) ─────────────────────
 FOTOS = [
-    ("image/maya 1.jpeg",   0, "frontal"),
-    ("image/maya 2.jpeg", 1, "izquierda"),
-    ("image/maya 3.jpeg",   2, "derecha"),
+    ("image/RegistroMaya1.jpeg",   0, "frontal"),
+    ("image/RegistroMaya2.jpeg", 1, "izquierda"),
+    ("image/RegistroMaya3.jpeg",   2, "derecha"),
 ]
 
 

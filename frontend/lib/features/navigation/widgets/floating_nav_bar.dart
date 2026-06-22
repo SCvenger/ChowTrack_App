@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/app_theme.dart';
-import '../../../features/auth/auth_controller.dart';
 import '../navigation_controller.dart';
 
 class FloatingNavBar extends StatelessWidget {

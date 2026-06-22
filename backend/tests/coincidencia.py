@@ -1,22 +1,3 @@
-# tests/coincidencia.py
-"""
-═══════════════════════════════════════════════════════════════════════════
-TEST DE COINCIDENCIA — Compara una foto nueva contra los registros
-═══════════════════════════════════════════════════════════════════════════
-
-USO:
-  1. Coloca la foto a identificar en esta carpeta como:  prueba.jpg
-  2. Edita config.py con tu TOKEN
-  3. Ejecuta:  python coincidencia.py
-
-MODO CALIBRACIÓN (recomendado para afinar el umbral):
-  Coloca dos fotos:
-    - mismo.jpg     → otra foto del MISMO perro registrado
-    - diferente.jpg → foto de OTRO perro distinto
-  Ejecuta:  python coincidencia.py --calibrar
-  El script mostrará ambos scores para que veas la separación real.
-"""
-
 import base64
 import json
 import os
@@ -85,9 +66,9 @@ def modo_normal():
     print("═" * 70)
     print("  TEST DE COINCIDENCIA")
     print("═" * 70)
-    print("\n🔍 Identificando 'prueba.jpg' contra los registros...")
+    print("\n🔍 Identificando 'MatchMaya.jpeg' contra los registros...")
 
-    data = identificar("image/prueba Maya.jpeg")
+    data = identificar("image/test02 pet.jpg")
     if data:
         mostrar_resultado(data)
 
@@ -98,13 +79,13 @@ def modo_calibracion():
     print("═" * 70)
 
     print("\n🔍 [1/2] Identificando 'mismo.jpg' (debería COINCIDIR)...")
-    data_mismo = identificar("image/prueba Maya.jpeg")
+    data_mismo = identificar("image/MatchMaya.jpeg")
     score_mismo = data_mismo.get("score", 0.0) if data_mismo else None
     if data_mismo:
         mostrar_resultado(data_mismo)
 
     print("\n🔍 [2/2] Identificando 'diferente.jpg' (NO debería coincidir)...")
-    data_dif = identificar("image/8638033.jpg")
+    data_dif = identificar("image/test02 pet.jpg")
     score_dif = data_dif.get("score", 0.0) if data_dif else None
     if data_dif:
         mostrar_resultado(data_dif)

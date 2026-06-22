@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../auth/auth_controller.dart';
+import '../map/controllers/map_controller.dart';
 import '../navigation/navigation_controller.dart';
 import '../pets/controllers/pets_controller.dart';
 import 'edit_profile_screen.dart';
@@ -77,6 +78,9 @@ class _ProfileViewState extends State<ProfileView> {
 
     context.read<PetsController>().clear();
     context.read<ProfileController>().clear();
+    // Limpia también el mapa para que el siguiente usuario
+    // no vea las mascotas/posición de la sesión anterior
+    context.read<PetsMapController>().clear();
     await context.read<AuthController>().logout();
   }
 

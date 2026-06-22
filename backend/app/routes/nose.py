@@ -22,9 +22,7 @@ router = APIRouter(prefix="/nose", tags=["Nose Biometrics"])
 
 
 # ── Umbrales de decisión ────────────────────────────────────────────────────
-MATCH_THRESHOLD = 0.14   # Calibrado con datos reales:
-                         # Mismo perro: 0.1655 | Diferente: 0.1141
-                         # Umbral 0.14 discrimina correctamente.
+MATCH_THRESHOLD = 2.2015
 
 
 # ════════════════════════════════════════════════════════════════════════════

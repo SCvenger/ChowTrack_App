@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart' hide Path;
 import 'package:provider/provider.dart';
 
 import '../../core/api_config.dart';
@@ -23,10 +22,11 @@ class HomeView extends StatefulWidget {
   State<HomeView> createState() => _HomeViewState();
 }
 
-class _HomeViewState extends State<HomeView> {
+class _HomeViewState extends State<HomeView> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Poblar PetsController compartido si aún no tiene datos
       final petsCtrl = context.read<PetsController>();
@@ -35,11 +35,25 @@ class _HomeViewState extends State<HomeView> {
       }
 
       // Inicializar GPS + mascotas del mapa (usado también por MapView)
-      final mapCtrl = context.read<PetsMapController>();
-      if (!mapCtrl.isInitialized) {
-        mapCtrl.initialize();
-      }
+      // initialize() es idempotente: si MapView ya la disparó, reutiliza el Future
+      context.read<PetsMapController>().initialize();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Al volver a la app (ej. desde los ajustes de ubicación del sistema),
+  // re-verifica el estado del GPS para que el banner SISTEMA se actualice
+  // sin necesidad de reiniciar la aplicación.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<PetsMapController>().refreshLocation();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -76,26 +90,45 @@ class _HomeViewState extends State<HomeView> {
       final confirmed = await _confirmMarkAsLost(candidates.first);
       if (confirmed == true) selected = candidates.first;
     } else {
+      // Ocultar la nav bar flotante para que no tape las opciones del sheet
+      final navBar = context.read<NavigationController>();
+      navBar.hideNavBar();
       selected = await _showPetSelector(candidates);
+      navBar.showNavBar();
     }
 
     if (selected == null || !mounted) return;
 
-    // Capturar GPS antes de marcar — es opcional, el flujo no se bloquea
-    double? lat;
-    double? lng;
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 6),
-        ),
-      );
-      lat = pos.latitude;
-      lng = pos.longitude;
-    } catch (_) {
-      // Sin GPS: la mascota se marca como perdida sin coordenadas
+    // Prioridad GPS: 1) posición cacheada del controller (ya disponible),
+    // 2) última posición conocida (instant), 3) adquirir nueva (hasta 10s).
+    // Sin coordenadas el pin no aparece en el mapa de otros usuarios.
+    final mapCtrl = context.read<PetsMapController>();
+    double? lat = mapCtrl.userPosition?.latitude;
+    double? lng = mapCtrl.userPosition?.longitude;
+
+    if (lat == null || lng == null) {
+      try {
+        final last = await Geolocator.getLastKnownPosition();
+        if (last != null) {
+          lat = last.latitude;
+          lng = last.longitude;
+        } else {
+          final pos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 10),
+            ),
+          );
+          lat = pos.latitude;
+          lng = pos.longitude;
+        }
+      } catch (_) {}
     }
+
+    // Fallback final: posición del mapa (GPS real o Cochabamba si no hay GPS).
+    // Garantiza que el pin siempre aparece — sin coordenadas el backend lo filtra.
+    lat ??= mapCtrl.userLatLng.latitude;
+    lng ??= mapCtrl.userLatLng.longitude;
 
     try {
       await petsController.updatePetStatus(
@@ -105,6 +138,11 @@ class _HomeViewState extends State<HomeView> {
         lng: lng,
       );
       if (!mounted) return;
+
+      // Refrescar el mapa para que el pin de la mascota perdida
+      // aparezca de inmediato (tanto en el preview como en MapView)
+      context.read<PetsMapController>().loadPetsNearby();
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('${selected.name} marcada como perdida'),
@@ -238,8 +276,10 @@ class _HomeViewState extends State<HomeView> {
               if (!mapCtrl.locationEnabled && mapCtrl.isInitialized) ...[
                 _GpsBanner(
                   onActivate: () async {
+                    // Solo abre los ajustes. Al volver a la app, el
+                    // lifecycle observer + el stream del GPS detectan
+                    // el cambio y actualizan el banner automáticamente.
                     await Geolocator.openLocationSettings();
-                    await mapCtrl.refreshLocation();
                   },
                 ),
                 AppTheme.spacerMd,
@@ -605,41 +645,6 @@ class _MapPreview extends StatelessWidget {
 
               // Overlay tapeable transparente (intercepta gestos del mapa)
               Positioned.fill(child: Container(color: Colors.transparent)),
-
-              // Badge "Live Grid Active"
-              Positioned(
-                bottom: 12,
-                left: 12,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.75),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: AppColors.esmeraldGreen,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Live Grid Active',
-                        style:
-                            AppTheme.labelSm.copyWith(color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
 
               // Botón de recentrar
               Positioned(

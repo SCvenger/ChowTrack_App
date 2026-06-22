@@ -82,7 +82,15 @@ async def get_my_pets(user_id: str = Depends(get_current_user_id)):
         if response.data is None:
             raise ChowTrackException(500, "Error al obtener las mascotas", "supabase_null")
 
-        return [PetResponseSchema(**pet) for pet in response.data]
+        # Deduplicar por id por si la vista tuviese filas repetidas
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for row in response.data:
+            if row["id"] not in seen:
+                seen.add(row["id"])
+                unique.append(row)
+
+        return [PetResponseSchema(**pet) for pet in unique]
 
     except ChowTrackException:
         raise
@@ -163,6 +171,12 @@ async def update_pet_status(
                 "last_seen_lng": payload.last_seen_lng,
                 "last_seen_at":  datetime.now(timezone.utc).isoformat(),
             })
+
+        # Al recuperar (home): se conservan las últimas coordenadas conocidas
+        # y se sella el momento de recuperación. El mapa la muestra en verde
+        # durante 24h a partir de este instante y luego la oculta sola.
+        if payload.status == "home":
+            update_data["last_seen_at"] = datetime.now(timezone.utc).isoformat()
 
         if payload.notes is not None:
             update_data["notes"] = payload.notes

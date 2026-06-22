@@ -7,6 +7,7 @@ class TokenStorage {
   static const String _accessTokenKey = 'access_token';
   static const String _refreshTokenKey = 'refresh_token';
   static const String _userIdKey = 'user_id';
+  static const String _phoneRegisteredKey = 'phone_registered';
 
   // Guardar access token
   static Future<void> saveAccessToken(String token) async {
@@ -44,11 +45,24 @@ class TokenStorage {
     return token != null && token.isNotEmpty;
   }
 
+  // Marcar que el usuario ya registró su teléfono
+  // (el paso 4 del wizard se omite en futuros registros)
+  static Future<void> markPhoneRegistered() async {
+    await _storage.write(key: _phoneRegisteredKey, value: 'true');
+  }
+
+  // ¿El usuario ya registró su teléfono?
+  static Future<bool> hasRegisteredPhone() async {
+    final value = await _storage.read(key: _phoneRegisteredKey);
+    return value == 'true';
+  }
+
   // Limpiar todos los tokens (logout)
   static Future<void> clearAll() async {
     await _storage.delete(key: _accessTokenKey);
     await _storage.delete(key: _refreshTokenKey);
     await _storage.delete(key: _userIdKey);
+    await _storage.delete(key: _phoneRegisteredKey);
   }
 
   // Guardar sesión completa

@@ -1,19 +1,34 @@
 // lib/features/pets/pet_detail_view.dart
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
 import '../../core/app_theme.dart';
+import '../map/controllers/map_controller.dart';
 import '../petRegistration/models/pet_model.dart';
+import 'controllers/pets_controller.dart';
 
-class PetDetailView extends StatelessWidget {
+class PetDetailView extends StatefulWidget {
   final PetModel pet;
 
   const PetDetailView({super.key, required this.pet});
 
+  @override
+  State<PetDetailView> createState() => _PetDetailViewState();
+}
+
+class _PetDetailViewState extends State<PetDetailView> {
+  // Copia local viva: se actualiza al cambiar el estado para reflejarlo
+  // de inmediato (header verde/rojo) sin salir de la pantalla.
+  late PetModel pet = widget.pet;
+  bool _isUpdating = false;
+
   // ── Color dinámico según estado ──────────────────────────────────────────
+  // 'home' (en casa) y 'found' comparten el verde; 'lost' es rojo.
   Color get _headerColor => switch (pet.status) {
         'lost'  => AppColors.panicRed,
         'found' => AppColors.esmeraldGreen,
-        _       => AppColors.trustBlue,
+        _       => AppColors.esmeraldGreen,
       };
 
   String get _statusLabel => switch (pet.status) {
@@ -30,20 +45,151 @@ class PetDetailView extends StatelessWidget {
 
   String get _actionLabel => switch (pet.status) {
         'lost'  => 'Marcar como encontrado',
-        'found' => 'Ya está en casa',
+        'found' => 'Marcar como en casa',
         _       => 'Marcar como perdido',
       };
 
   Color get _actionColor => switch (pet.status) {
         'lost'  => AppColors.esmeraldGreen,
-        'found' => AppColors.trustBlue,
+        'found' => AppColors.esmeraldGreen,
         _       => AppColors.panicRed,
       };
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CAMBIO DE ESTADO
+  // lost/found → home (recuperada: verde 1h en el mapa, luego desaparece)
+  // home       → lost (captura GPS para el ping en el mapa)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  Future<void> _handleStatusChange() async {
+    final markingLost = pet.status == 'home';
+    final target = markingLost ? 'lost' : 'home';
+
+    final confirmed = await _confirmChange(markingLost);
+    if (confirmed != true || !mounted) return;
+
+    // Solo al reportar como perdida necesitamos coordenadas para el pin.
+    // Prioridad: 1) posición cacheada del controller, 2) última conocida,
+    // 3) adquirir nueva (hasta 10s). Sin coordenadas el pin no se muestra.
+    double? lat;
+    double? lng;
+    if (markingLost) {
+      final mapCtrl = context.read<PetsMapController>();
+      lat = mapCtrl.userPosition?.latitude;
+      lng = mapCtrl.userPosition?.longitude;
+
+      if (lat == null || lng == null) {
+        try {
+          final last = await Geolocator.getLastKnownPosition();
+          if (last != null) {
+            lat = last.latitude;
+            lng = last.longitude;
+          } else {
+            final pos = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.medium,
+                timeLimit: Duration(seconds: 10),
+              ),
+            );
+            lat = pos.latitude;
+            lng = pos.longitude;
+          }
+        } catch (_) {}
+      }
+
+      // Fallback final: posición del mapa (GPS real o Cochabamba).
+      // Sin coordenadas el backend filtra la mascota y el pin no aparece.
+      lat ??= mapCtrl.userLatLng.latitude;
+      lng ??= mapCtrl.userLatLng.longitude;
+    }
+
+    if (!mounted) return;
+    setState(() => _isUpdating = true);
+
+    try {
+      await context
+          .read<PetsController>()
+          .updatePetStatus(pet.id, target, lat: lat, lng: lng);
+      if (!mounted) return;
+
+      // Actualizar estado local con timestamp para que _daysLabel sea correcto
+      setState(() => pet = pet.copyWith(
+            status: target,
+            lastSeenAt: DateTime.now().toUtc().toIso8601String(),
+          ));
+
+      // Refrescar el mapa: el pin cambia a rojo (perdida) o verde (recuperada)
+      context.read<PetsMapController>().loadPetsNearby();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            markingLost
+                ? '${pet.name} marcada como perdida'
+                : '${pet.name} está de vuelta en casa',
+          ),
+          backgroundColor:
+              markingLost ? AppColors.panicRed : AppColors.esmeraldGreen,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo actualizar. Inténtalo de nuevo.'),
+          backgroundColor: AppColors.panicRed,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
+  Future<bool?> _confirmChange(bool markingLost) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(markingLost ? '¿Confirmar reporte?' : '¿Ya está en casa?'),
+        content: Text(
+          markingLost
+              ? '¿Reportar a ${pet.name} como perdida?'
+              : 'Marcarás a ${pet.name} como recuperada. '
+                  'Aparecerá en verde en el mapa durante 1 hora.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor:
+                  markingLost ? AppColors.panicRed : AppColors.esmeraldGreen,
+            ),
+            child: Text(markingLost ? 'Sí, reportar' : 'Sí, está en casa'),
+          ),
+        ],
+      ),
+    );
+  }
+
   String get _daysLabel {
+    if (pet.isLost) {
+      // Días desde que se marcó como perdido (lastSeenAt), no desde createdAt
+      if (pet.lastSeenAt != null) {
+        final lostDate = DateTime.tryParse(pet.lastSeenAt!)?.toLocal();
+        if (lostDate != null) {
+          final days = DateTime.now().difference(lostDate).inDays;
+          if (days == 0) return 'Hoy perdido';
+          return '$days ${days == 1 ? "día" : "días"} perdido';
+        }
+      }
+      return 'Recién perdido';
+    }
+    // Días con ChowTrack: siempre desde createdAt
     if (pet.createdAt == null) return '—';
     final days = DateTime.now().difference(pet.createdAt!).inDays;
-    if (pet.isLost) return '$days días perdido';
     return '$days días';
   }
 
@@ -298,11 +444,18 @@ class PetDetailView extends StatelessWidget {
 
   Widget _buildActionButton(BuildContext context) {
     return OutlinedButton.icon(
-      onPressed: () {
-        // TODO: lógica de cambio de estado
-      },
-      icon: Icon(_actionIcon, color: _actionColor),
-      label: Text(_actionLabel),
+      onPressed: _isUpdating ? null : _handleStatusChange,
+      icon: _isUpdating
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: _actionColor,
+              ),
+            )
+          : Icon(_actionIcon, color: _actionColor),
+      label: Text(_isUpdating ? 'Actualizando…' : _actionLabel),
       style: OutlinedButton.styleFrom(
         foregroundColor: _actionColor,
         side: BorderSide(color: _actionColor.withValues(alpha: 0.4)),

@@ -413,7 +413,7 @@ class _FilterChips extends StatelessWidget {
             activeColor: AppColors.panicRed,
           ),
           _Chip(
-            label: 'Avistados',
+            label: 'Encontrados',
             id: 'avistados',
             active: active,
             onTap: onChanged,

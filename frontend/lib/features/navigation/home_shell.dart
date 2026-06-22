@@ -1,6 +1,7 @@
 // lib/features/navigation/home_shell.dart
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'navigation_controller.dart';
 import 'widgets/floating_nav_bar.dart';
@@ -28,7 +29,7 @@ class HomeShell extends StatelessWidget {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
 
         final currentNav =
@@ -46,8 +47,9 @@ class HomeShell extends StatelessWidget {
           return;
         }
 
-        // Si ya estamos en Home sin stack, sale de la app
-        Navigator.of(context).pop();
+        // Si ya estamos en Home sin stack, sale de la app.
+        // (HomeShell es la ruta raíz: Navigator.pop() no haría nada)
+        SystemNavigator.pop();
       },
       child: Scaffold(
         extendBody: true, // El contenido pasa por debajo de la nav flotante

@@ -12,6 +12,9 @@ class PetModel {
   final String? notes;
   final DateTime? createdAt;
   final bool hasNoseScan;
+  final String? lastSeenAt;   // ISO timestamp: cuándo se marcó lost/home
+  final double? lastSeenLat;
+  final double? lastSeenLng;
 
   const PetModel({
     required this.id,
@@ -24,34 +27,43 @@ class PetModel {
     this.notes,
     this.createdAt,
     this.hasNoseScan = false,
+    this.lastSeenAt,
+    this.lastSeenLat,
+    this.lastSeenLng,
   });
 
   factory PetModel.fromJson(Map<String, dynamic> json) => PetModel(
-        id:          json['id']        as String,
-        ownerId:     json['owner_id']  as String,
-        name:        json['name']      as String,
-        breed:       json['breed']     as String?,
-        ageYears:    json['age_years'] as int?,
-        photoUrl:    json['photo_url'] as String?,
-        status:      (json['status']   as String?) ?? 'home',
-        notes:       json['notes']     as String?,
-        createdAt:   json['created_at'] != null
+        id:           json['id']           as String,
+        ownerId:      json['owner_id']     as String,
+        name:         json['name']         as String,
+        breed:        json['breed']        as String?,
+        ageYears:     json['age_years']    as int?,
+        photoUrl:     json['photo_url']    as String?,
+        status:       (json['status']      as String?) ?? 'home',
+        notes:        json['notes']        as String?,
+        createdAt:    json['created_at'] != null
             ? DateTime.tryParse(json['created_at'] as String)
             : null,
-        hasNoseScan: (json['has_nose_scan'] as bool?) ?? false,
+        hasNoseScan:  (json['has_nose_scan'] as bool?) ?? false,
+        lastSeenAt:   json['last_seen_at']  as String?,
+        lastSeenLat:  (json['last_seen_lat'] as num?)?.toDouble(),
+        lastSeenLng:  (json['last_seen_lng'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
-        'id':            id,
-        'owner_id':      ownerId,
-        'name':          name,
-        'breed':         breed,
-        'age_years':     ageYears,
-        'photo_url':     photoUrl,
-        'status':        status,
-        'notes':         notes,
-        'created_at':    createdAt?.toIso8601String(),
-        'has_nose_scan': hasNoseScan,
+        'id':              id,
+        'owner_id':        ownerId,
+        'name':            name,
+        'breed':           breed,
+        'age_years':       ageYears,
+        'photo_url':       photoUrl,
+        'status':          status,
+        'notes':           notes,
+        'created_at':      createdAt?.toIso8601String(),
+        'has_nose_scan':   hasNoseScan,
+        'last_seen_at':    lastSeenAt,
+        'last_seen_lat':   lastSeenLat,
+        'last_seen_lng':   lastSeenLng,
       };
 
   bool get isHome  => status == 'home';
@@ -61,18 +73,22 @@ class PetModel {
   PetModel copyWith({
     String? status,
     bool? hasNoseScan,
+    String? lastSeenAt,
   }) =>
       PetModel(
-        id: id,
-        ownerId: ownerId,
-        name: name,
-        breed: breed,
-        ageYears: ageYears,
-        photoUrl: photoUrl,
-        status: status ?? this.status,
-        notes: notes,
-        createdAt: createdAt,
-        hasNoseScan: hasNoseScan ?? this.hasNoseScan,
+        id:           id,
+        ownerId:      ownerId,
+        name:         name,
+        breed:        breed,
+        ageYears:     ageYears,
+        photoUrl:     photoUrl,
+        status:       status      ?? this.status,
+        notes:        notes,
+        createdAt:    createdAt,
+        hasNoseScan:  hasNoseScan ?? this.hasNoseScan,
+        lastSeenAt:   lastSeenAt  ?? this.lastSeenAt,
+        lastSeenLat:  lastSeenLat,
+        lastSeenLng:  lastSeenLng,
       );
 
   @override

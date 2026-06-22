@@ -60,21 +60,6 @@ class _AuthViewState extends State<AuthView> {
     }
   }
 
-  void _handleGoogleAuth(AuthController authController) async {
-    final success = await authController.initiateGoogleAuth();
-
-    if (!mounted) return;
-
-    if (!success && authController.errorMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(authController.errorMessage!),
-          backgroundColor: AppColors.panicRed,
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final authController = context.watch<AuthController>();
@@ -212,16 +197,10 @@ class _AuthViewState extends State<AuthView> {
                         ),
                 ),
 
-                const SizedBox(height: 16),
-
-                // Botón Google
-                OutlinedButton.icon(
-                  onPressed: authController.isLoading
-                      ? null
-                      : () => _handleGoogleAuth(authController),
-                  icon: const Icon(Icons.login),
-                  label: const Text('Continuar con Google'),
-                ),
+                // NOTA: el botón "Continuar con Google" se ocultó porque el
+                // flujo OAuth no puede completarse aún (falta deep link en la
+                // app para recibir el callback). Se reactivará cuando el flujo
+                // esté implementado de extremo a extremo.
 
                 const SizedBox(height: 24),
 

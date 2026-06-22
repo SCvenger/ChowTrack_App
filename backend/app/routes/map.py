@@ -4,6 +4,7 @@
 from fastapi import APIRouter, Depends, Query
 from typing import List
 from math import radians, cos, sin, asin, sqrt
+from datetime import datetime, timezone, timedelta
 
 from app.core.schemas import MapPetSchema
 from app.core.errors import ChowTrackException
@@ -24,6 +25,20 @@ def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * asin(sqrt(a))
 
 
+# ── ¿El timestamp ISO está dentro de la última hora? ────────────────────────
+def _within_last_hour(iso_ts: str | None, now: datetime) -> bool:
+    if not iso_ts:
+        return False
+    try:
+        # Supabase devuelve ISO con zona; normaliza el sufijo 'Z'
+        ts = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return False
+    return (now - ts) <= timedelta(hours=1)
+
+
 # ══════════════════════════════════════════════════════════
 # GET /map/pets
 # Mascotas perdidas/avistadas dentro del radio del usuario
@@ -35,8 +50,9 @@ def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     summary="Mascotas cercanas en el mapa",
     description=(
         "Retorna mascotas LOST/FOUND con coordenadas conocidas dentro del "
-        "radio especificado. El campo `is_own` indica si la mascota pertenece "
-        "al usuario autenticado."
+        "radio especificado. Tambien incluye mascotas HOME ('en casa') que "
+        "fueron recuperadas en las ultimas 24h (pin verde temporal). El campo "
+        "`is_own` indica si la mascota pertenece al usuario autenticado."
     ),
 )
 async def get_map_pets(
@@ -46,13 +62,14 @@ async def get_map_pets(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
-        # 1. Obtener todas las mascotas activas con coordenadas conocidas
-        #    Solo status LOST o FOUND son relevantes para el mapa público
+        # 1. Obtener mascotas activas con coordenadas conocidas.
+        #    LOST/FOUND siempre son relevantes; HOME solo si fue recuperada
+        #    en las ultimas 24h (pin verde temporal, ver paso 2).
         response = (
             supabase_admin
             .table("pets")
-            .select("id, owner_id, name, breed, photo_url, status, last_seen_lat, last_seen_lng")
-            .in_("status", ["lost", "found"])
+            .select("id, owner_id, name, breed, photo_url, status, last_seen_lat, last_seen_lng, last_seen_at")
+            .in_("status", ["lost", "home"])  # found nunca aparece en mapa
             .eq("is_active", True)
             .not_.is_("last_seen_lat", "null")
             .not_.is_("last_seen_lng", "null")
@@ -66,7 +83,8 @@ async def get_map_pets(
                 detail="supabase_null_response",
             )
 
-        # 2. Filtrar por radio usando Haversine
+        # 2. Filtrar por radio (Haversine) y ventana de 24h para HOME
+        now = datetime.now(timezone.utc)
         nearby: list[MapPetSchema] = []
 
         for pet in response.data:
@@ -75,6 +93,12 @@ async def get_map_pets(
 
             if pet_lat is None or pet_lng is None:
                 continue
+
+            # Mascotas recuperadas (home): visibles 1h tras la recuperacion.
+            # Pasado ese tiempo desaparecen del mapa automaticamente.
+            if pet["status"] == "home":
+                if not _within_last_hour(pet.get("last_seen_at"), now):
+                    continue
 
             distance = _haversine(lat, lng, float(pet_lat), float(pet_lng))
 
@@ -89,6 +113,7 @@ async def get_map_pets(
                         lat=float(pet_lat),
                         lng=float(pet_lng),
                         is_own=(pet["owner_id"] == user_id),
+                        last_seen_at=pet.get("last_seen_at"),
                     )
                 )
 
