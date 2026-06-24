@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 class MapPetModel {
   final String id;
   final String name;
-  final String status;   // lost | home (found nunca llega al cliente)
+  final String status;   // lost | found (match azul) | home
   final String? photoUrl;
   final String? breed;
   final double lat;
@@ -45,20 +45,23 @@ class MapPetModel {
 
   LatLng get latLng => LatLng(lat, lng);
 
-  // Perdida = rojo; recuperada (home reciente) = verde
-  Color get markerColor =>
-      isLost ? AppColors.panicRed : AppColors.esmeraldGreen;
+  // Perdida = rojo; match detectado (found) = azul; recuperada (home) = verde
+  Color get markerColor {
+    if (isLost)  return AppColors.panicRed;
+    if (isFound) return AppColors.trustBlue;
+    return AppColors.esmeraldGreen;
+  }
 
-  /// Regla de visibilidad en el mapa (SDD §2.2):
+  /// Regla de visibilidad en el mapa:
   /// - lost  → siempre visible
+  /// - found → siempre visible (hasta que el dueño marque como home)
   /// - home  → visible 1h tras la recuperación
-  /// - found → nunca visible
   ///
   /// Si lastSeenAt es null el backend ya filtró por tiempo → confiar en él.
   bool shouldShowOnMap() {
-    if (isLost) return true;
+    if (isLost || isFound) return true;
     if (isHome) {
-      if (lastSeenAt == null) return true; // backend ya filtró, confiamos
+      if (lastSeenAt == null) return true;
       final dt = DateTime.tryParse(lastSeenAt!);
       if (dt == null) return true;
       return DateTime.now().difference(dt.toLocal()).inHours < 1;
@@ -69,6 +72,7 @@ class MapPetModel {
   String get statusLabel => switch (status) {
         'lost'  => 'Perdido',
         'home'  => 'En casa',
+        'found' => 'En proceso',
         _       => 'Avistado',
       };
 

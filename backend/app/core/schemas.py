@@ -89,7 +89,7 @@ class MapPetSchema(BaseModel):
     """Schema ligero para marcadores en el mapa."""
     id: str
     name: str
-    status: str           # lost | home (found nunca aparece en mapa)
+    status: str           # lost | found | home
     photo_url: Optional[str] = None
     breed: Optional[str] = None
     lat: float

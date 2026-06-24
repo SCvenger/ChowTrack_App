@@ -24,22 +24,21 @@ class _PetDetailViewState extends State<PetDetailView> {
   bool _isUpdating = false;
 
   // ── Color dinámico según estado ──────────────────────────────────────────
-  // 'home' (en casa) y 'found' comparten el verde; 'lost' es rojo.
   Color get _headerColor => switch (pet.status) {
         'lost'  => AppColors.panicRed,
-        'found' => AppColors.esmeraldGreen,
+        'found' => AppColors.trustBlue,
         _       => AppColors.esmeraldGreen,
       };
 
   String get _statusLabel => switch (pet.status) {
         'lost'  => 'Perdido',
-        'found' => 'Encontrado',
+        'found' => 'En proceso',
         _       => 'En casa',
       };
 
   IconData get _statusIcon => switch (pet.status) {
         'lost'  => Icons.warning_amber_outlined,
-        'found' => Icons.search,
+        'found' => Icons.manage_search,
         _       => Icons.home_outlined,
       };
 

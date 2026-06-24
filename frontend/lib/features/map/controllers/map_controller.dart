@@ -1,6 +1,7 @@
 // lib/features/map/pets_map_controller.dart
 
 import 'dart:async';
+import 'dart:math';
 
 import 'package:chowtrack/features/map/models/map_pet_model.dart';
 import 'package:chowtrack/features/map/services/map_service.dart';
@@ -31,6 +32,9 @@ class PetsMapController extends ChangeNotifier {
   // Guard: evita que HomeView y MapView disparen la inicialización en paralelo
   Future<void>? _initFuture;
 
+  // Refresco periódico para propagar cambios de estado de otros usuarios
+  Timer? _refreshTimer;
+
   // Escucha cambios del servicio de ubicación EN VIVO (GPS on/off del sistema)
   StreamSubscription<ServiceStatus>? _serviceStatusSub;
 
@@ -60,6 +64,51 @@ class PetsMapController extends ChangeNotifier {
     };
   }
 
+  /// [filteredPets] con posiciones ajustadas para que los marcadores que
+  /// caen en el mismo punto no se solapen. Usa espiral de ángulo dorado:
+  /// distribución uniforme sin alineaciones visibles.
+  ///
+  /// Radio base ≈ 24 m por paso, escala con √n para que grupos grandes
+  /// no se dispersen demasiado.
+  List<(MapPetModel, LatLng)> get petsWithPositions {
+    final pets = filteredPets;
+    if (pets.length <= 1) {
+      return pets.map((p) => (p, p.latLng)).toList();
+    }
+
+    // Bin de ~11 m (4 decimales) — misma casilla = pines visualmente solapados
+    final groups = <String, List<int>>{};
+    for (var i = 0; i < pets.length; i++) {
+      final k = '${(pets[i].lat * 10000).round()},${(pets[i].lng * 10000).round()}';
+      groups.putIfAbsent(k, () => []).add(i);
+    }
+
+    final out = List<(MapPetModel, LatLng)?>.filled(pets.length, null);
+
+    for (final indices in groups.values) {
+      for (var j = 0; j < indices.length; j++) {
+        final pet = pets[indices[j]];
+        if (j == 0) {
+          out[indices[j]] = (pet, pet.latLng);
+        } else {
+          // Ángulo dorado 137.508° en radianes → distribución uniforme en espiral
+          final angle  = j * 2.399963;
+          final r      = 0.00022 * sqrt(j.toDouble()); // ≈ 24 m por paso
+          final cosLat = cos(pet.lat * pi / 180);
+          out[indices[j]] = (
+            pet,
+            LatLng(
+              pet.lat + r * cos(angle),
+              pet.lng + r * sin(angle) / cosLat,
+            ),
+          );
+        }
+      }
+    }
+
+    return out.whereType<(MapPetModel, LatLng)>().toList();
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // DETECCIÓN EN VIVO DEL GPS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -80,6 +129,7 @@ class PetsMapController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _serviceStatusSub?.cancel();
     super.dispose();
   }
@@ -97,6 +147,11 @@ class PetsMapController extends ChangeNotifier {
     await loadPetsNearby();
     _isInitialized = true;
     notifyListeners();
+    // Refresco automático cada 30 s para propagar cambios de otros usuarios
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => loadPetsNearby(),
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -224,12 +279,14 @@ class PetsMapController extends ChangeNotifier {
 
   void clear() {
     _loadGen++;        // invalida cualquier request en vuelo
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+    _initFuture = null;
     _userPosition = null;
     _allPets = [];
     _activeFilter = 'todos';
     _isLoading = false;
     _isInitialized = false;
-    _initFuture = null;
     _locationEnabled = false;
     _locationDenied = false;
     _error = null;

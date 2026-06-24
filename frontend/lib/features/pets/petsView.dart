@@ -63,16 +63,7 @@ class _PetsViewState extends State<PetsView> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Mis mascotas', style: AppTheme.headlineMd),
-            if (!ctrl.isLoading && !ctrl.hasError)
-              Text(
-                ctrl.pets.isEmpty
-                    ? 'Aún no tienes ninguna'
-                    : ctrl.pets.length == 1
-                        ? '1 mascota registrada'
-                        : '${ctrl.pets.length} mascotas registradas',
-                style: AppTheme.labelSm.copyWith(color: AppColors.outline),
-              ),
+            Text('Mis mascotas', style: AppTheme.headlineMd, textAlign: TextAlign.center),
           ],
         ),
         toolbarHeight: 72,
@@ -264,9 +255,9 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
-      'lost'  => ('Perdido', AppColors.panicRed),
-      'found' => ('Encontrado', AppColors.trustBlue),
-      _       => ('En casa', AppColors.esmeraldGreen),
+      'lost'  => ('Perdido',    AppColors.panicRed),
+      'found' => ('En proceso', AppColors.trustBlue),
+      _       => ('En casa',    AppColors.esmeraldGreen),
     };
 
     return Container(

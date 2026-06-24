@@ -174,8 +174,12 @@ async def update_pet_status(
 
         # Al recuperar (home): se conservan las últimas coordenadas conocidas
         # y se sella el momento de recuperación. El mapa la muestra en verde
-        # durante 24h a partir de este instante y luego la oculta sola.
+        # durante 1h a partir de este instante y luego la oculta sola.
         if payload.status == "home":
+            update_data["last_seen_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Al entrar en found (match detectado): actualizar last_seen_at
+        if payload.status == "found":
             update_data["last_seen_at"] = datetime.now(timezone.utc).isoformat()
 
         if payload.notes is not None:

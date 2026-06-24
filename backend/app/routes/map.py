@@ -69,7 +69,7 @@ async def get_map_pets(
             supabase_admin
             .table("pets")
             .select("id, owner_id, name, breed, photo_url, status, last_seen_lat, last_seen_lng, last_seen_at")
-            .in_("status", ["lost", "home"])  # found nunca aparece en mapa
+            .in_("status", ["lost", "home", "found"])
             .eq("is_active", True)
             .not_.is_("last_seen_lat", "null")
             .not_.is_("last_seen_lng", "null")
@@ -96,6 +96,7 @@ async def get_map_pets(
 
             # Mascotas recuperadas (home): visibles 1h tras la recuperacion.
             # Pasado ese tiempo desaparecen del mapa automaticamente.
+            # found (match detectado) y lost: siempre visibles.
             if pet["status"] == "home":
                 if not _within_last_hour(pet.get("last_seen_at"), now):
                     continue

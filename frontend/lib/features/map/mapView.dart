@@ -1,9 +1,12 @@
 // lib/features/map/map_view.dart
 
+import 'dart:convert';
+
 import 'package:chowtrack/features/map/controllers/map_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:provider/provider.dart';
 
@@ -156,15 +159,17 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
                 ],
               ),
 
-              // Marcadores de mascotas
+              // Marcadores de mascotas (con jitter para evitar solapamiento)
               MarkerLayer(
-                markers: ctrl.filteredPets.map((pet) {
+                markers: ctrl.petsWithPositions.map((entry) {
+                  final (pet, point) = entry;
                   return Marker(
-                    point: pet.latLng,
+                    point: point,
                     width: 52,
                     height: 64,
                     alignment: Alignment.topCenter,
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => _showPetDetails(pet),
                       child: _PetMarker(pet: pet),
                     ),
@@ -248,6 +253,8 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
   void _showPetDetails(MapPetModel pet) {
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,   // sube sobre la nav bar flotante
+      isScrollControlled: true, // altura dinámica según contenido
       backgroundColor: Colors.transparent,
       builder: (_) => _PetBottomSheet(pet: pet),
     );
@@ -609,128 +616,315 @@ class _Badge extends StatelessWidget {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// BOTTOM SHEET — ficha real de mascota
+// BOTTOM SHEET — ficha de mascota estilizada como PetDetailView
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _PetBottomSheet extends StatelessWidget {
+class _PetBottomSheet extends StatefulWidget {
   final MapPetModel pet;
-
   const _PetBottomSheet({required this.pet});
 
   @override
+  State<_PetBottomSheet> createState() => _PetBottomSheetState();
+}
+
+class _PetBottomSheetState extends State<_PetBottomSheet> {
+  // Caché estático: persiste durante la sesión y evita llamadas repetidas
+  // a Nominatim para la misma ubicación (la API tiene límite de uso).
+  // Clave: lat/lng redondeados a 4 decimales (≈11 m de precisión).
+  static final Map<String, String> _geocodeCache = {};
+
+  String? _address;
+  bool _loadingAddress = true;
+
+  String get _cacheKey =>
+      '${widget.pet.lat.toStringAsFixed(4)},${widget.pet.lng.toStringAsFixed(4)}';
+
+  @override
+  void initState() {
+    super.initState();
+    _reverseGeocode();
+  }
+
+  // Convierte lat/lng a nombre de lugar usando Nominatim (OSM, gratuito).
+  // Si la ubicación ya fue resuelta en esta sesión, devuelve el resultado
+  // del caché sin hacer ninguna petición HTTP.
+  Future<void> _reverseGeocode() async {
+    final key = _cacheKey;
+
+    // Hit de caché: mostrar resultado inmediatamente, sin red
+    if (_geocodeCache.containsKey(key)) {
+      setState(() { _address = _geocodeCache[key]; _loadingAddress = false; });
+      return;
+    }
+
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse'
+        '?lat=${widget.pet.lat}&lon=${widget.pet.lng}'
+        '&format=json&accept-language=es',
+      );
+      final res = await http
+          .get(uri, headers: {'User-Agent': 'ChowTrack/1.0'})
+          .timeout(const Duration(seconds: 8));
+
+      if (res.statusCode == 200) {
+        final data   = jsonDecode(res.body) as Map<String, dynamic>;
+        final addr   = data['address']  as Map<String, dynamic>?;
+        final result = _buildAddress(addr, data['display_name'] as String?);
+        _geocodeCache[key] = result; // guardar en caché
+        if (mounted) setState(() { _address = result; _loadingAddress = false; });
+      } else {
+        if (mounted) setState(() { _address = null; _loadingAddress = false; });
+      }
+    } catch (_) {
+      if (mounted) setState(() { _address = null; _loadingAddress = false; });
+    }
+  }
+
+  String _buildAddress(Map<String, dynamic>? addr, String? displayName) {
+    if (addr == null) {
+      // fallback: primeras dos partes del display_name
+      return displayName?.split(',').take(2).join(',').trim() ?? '';
+    }
+    final road    = addr['road']          as String?;
+    final suburb  = addr['suburb']        as String?
+                 ?? addr['neighbourhood'] as String?;
+    final city    = addr['city']          as String?
+                 ?? addr['town']          as String?
+                 ?? addr['village']       as String?;
+
+    if (road != null && suburb != null) return '$road, $suburb';
+    if (road != null && city != null)   return '$road, $city';
+    if (road != null)                   return road;
+    if (suburb != null)                 return suburb;
+    if (city != null)                   return city;
+    return displayName?.split(',').take(2).join(',').trim() ?? '';
+  }
+
+  String get _lastSeenText {
+    if (widget.pet.lastSeenAt == null) return '';
+    final dt = DateTime.tryParse(widget.pet.lastSeenAt!)?.toLocal();
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1)  return 'Hace un momento';
+    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
+    if (diff.inHours < 24)   return 'Hace ${diff.inHours} h';
+    return 'Hace ${diff.inDays} días';
+  }
+
+  // Foto expandida en pantalla completa al tocarla
+  void _expandPhoto(BuildContext context) {
+    if (widget.pet.photoUrl == null) return;
+    showDialog(
+      context: context,
+      useRootNavigator: true,
+      barrierColor: Colors.black87,
+      builder: (ctx) => GestureDetector(
+        onTap: () => Navigator.pop(ctx),
+        child: Center(
+          child: InteractiveViewer(
+            child: Image.network(
+              widget.pet.photoUrl!,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) =>
+                  const Icon(Icons.broken_image, color: Colors.white, size: 64),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final pet       = widget.pet;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(20)),
-      ),
+      // clipBehavior recorta los hijos al borderRadius sin necesitar color propio
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Center(
-            child: Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.inputFill,
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(AppTheme.marginMobile),
-            child: Row(
+
+          // ── HEADER coloreado: rojo=perdido, azul=en proceso, verde=en casa ──
+          Container(
+            width: double.infinity,
+            color: pet.markerColor,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+            child: Column(
               children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.inputFill,
-                    border: Border.all(color: pet.markerColor, width: 2),
-                  ),
-                  child: ClipOval(
-                    child: pet.photoUrl != null
-                        ? Image.network(pet.photoUrl!, fit: BoxFit.cover)
-                        : Icon(Icons.pets, color: pet.markerColor, size: 28),
+                // Handle sobre fondo de color
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 16),
+
+                // Foto tappeable
+                GestureDetector(
+                  onTap: () => _expandPhoto(context),
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(pet.name, style: AppTheme.headlineMd),
-                          ),
-                          if (pet.isOwn)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.trustBlue.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                'Tuya',
-                                style: AppTheme.labelSm.copyWith(
-                                  color: AppColors.trustBlue,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 3,
-                        ),
+                        width: 88,
+                        height: 88,
                         decoration: BoxDecoration(
-                          color: pet.markerColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          pet.statusLabel,
-                          style: AppTheme.labelSm.copyWith(
-                            color: pet.markerColor,
-                            fontWeight: FontWeight.w600,
+                          shape: BoxShape.circle,
+                          color: Colors.white.withValues(alpha: 0.2),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            width: 2.5,
                           ),
+                        ),
+                        child: ClipOval(
+                          child: pet.photoUrl != null
+                              ? Image.network(
+                                  pet.photoUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) => Icon(
+                                    Icons.pets,
+                                    size: 40,
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.pets,
+                                  size: 40,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
                         ),
                       ),
-                      if (pet.breed != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          pet.breed!,
-                          style: AppTheme.labelSm.copyWith(
-                            color: AppColors.outline,
+                      // Indicador de "toca para expandir"
+                      if (pet.photoUrl != null)
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            shape: BoxShape.circle,
                           ),
+                          child: const Icon(Icons.zoom_in, color: Colors.white, size: 14),
                         ),
-                      ],
                     ],
                   ),
                 ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
+                const SizedBox(height: 10),
+
+                // Nombre
+                Text(
+                  pet.name,
+                  style: AppTheme.headlineMd.copyWith(
+                    color: Colors.white,
+                    fontSize: 20,
                   ),
-                  child: const Text('Ver más'),
+                ),
+                const SizedBox(height: 6),
+
+                // Solo estado + raza debajo del nombre
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _SheetBadge(label: pet.statusLabel),
+                    if (pet.breed != null) ...[
+                      const SizedBox(width: 8),
+                      _SheetBadge(label: pet.breed!),
+                    ],
+                  ],
                 ),
               ],
             ),
           ),
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+
+          // ── CUERPO blanco con información ─────────────────────────────
+          Container(
+            width: double.infinity,
+            color: Colors.white,
+            padding: const EdgeInsets.all(AppTheme.marginMobile),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_lastSeenText.isNotEmpty)
+                  _InfoRow(icon: Icons.schedule, text: _lastSeenText),
+
+                // Dirección geocodificada
+                _InfoRow(
+                  icon: Icons.location_on_outlined,
+                  text: _loadingAddress
+                      ? 'Obteniendo ubicación…'
+                      : (_address?.isNotEmpty == true
+                          ? _address!
+                          : 'Ubicación desconocida'),
+                ),
+
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: pet.markerColor,
+                      side: BorderSide(color: pet.markerColor.withValues(alpha: 0.4)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Cerrar'),
+                  ),
+                ),
+                SizedBox(height: bottomPad),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetBadge extends StatelessWidget {
+  final String label;
+  const _SheetBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+      ),
+      child: Text(label, style: AppTheme.labelSm.copyWith(color: Colors.white)),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _InfoRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppColors.outline),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+            ),
+          ),
         ],
       ),
     );

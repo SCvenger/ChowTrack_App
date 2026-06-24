@@ -8,6 +8,7 @@ Endpoints de biometría nasal (Plan C: SIFT + Gemini).
 
 import base64
 import httpx
+from datetime import datetime, timezone
 # pyrefly: ignore [missing-import]
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -299,6 +300,15 @@ async def identify_nose(
         .execute()
     )
     pet_name = pet.data.get("name") if pet.data else "Desconocido"
+
+    # 7b. Marcar la mascota como "found" (pin azul en el mapa)
+    try:
+        supabase_admin.table("pets").update({
+            "status": "found",
+            "last_seen_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", best_pet_id).execute()
+    except Exception:
+        pass  # no bloquear la respuesta por un fallo de BD
 
     # 8. Explicación con Gemini
     explanation = "Coincidencia por características nasales."
