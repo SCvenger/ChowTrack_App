@@ -1,0 +1,13 @@
+# Secretos locales (claves de Supabase / Gemini) — nunca al repositorio
+.env
+.env.*
+
+# Entornos virtuales
+env/
+.venv/
+venv/
+
+# Caché de Python
+__pycache__/
+*.pyc
+.pytest_cache/

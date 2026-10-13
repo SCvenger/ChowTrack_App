@@ -1,0 +1,11 @@
+# Cobertura medida SOLO sobre los módulos que estos unit tests prueban.
+[run]
+include =
+    */app/core/schemas.py
+    */app/core/errors.py
+    */app/routes/map.py
+    */app/routes/pets.py
+    */app/services/nose_sift.py
+
+[report]
+show_missing = True

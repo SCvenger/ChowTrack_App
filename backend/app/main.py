@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from app.core.config import settings
 from app.core.errors import global_exception_handler, ChowTrackException
-from app.routes import auth, pets, map, nose
+from app.routes import auth, pets, map, nose, health
 
 security = HTTPBearer()
 
@@ -41,6 +41,8 @@ app.include_router(auth.router)
 app.include_router(pets.router)
 app.include_router(map.router)
 app.include_router(nose.router)
+app.include_router(health.router)
+app.include_router(health.public_router)
 
 @app.get("/", tags=["Health"])
 def root():

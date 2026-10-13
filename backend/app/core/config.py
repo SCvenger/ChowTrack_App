@@ -16,7 +16,10 @@ class Settings:
     # Servidor 
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
-    
+
+    # URL pública del backend (enlaces del carnet compartido / QR)
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "https://chowtrack.onrender.com").rstrip("/")
+
     # CORS 
     CORS_ORIGINS: list = [
         "http://localhost:3000",      
