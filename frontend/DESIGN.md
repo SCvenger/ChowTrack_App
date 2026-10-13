@@ -13,6 +13,18 @@ colors:
   outline: '#737784'             # Bordes y texto secundario (AppColors.outline)
   black: '#000000'               # Texto principal e íconos (AppColors.black)
 
+  # ── Tokens auxiliares (superficies, sombras, estados deshabilitados) ─
+  card-surface: '#FFFFFF'        # AppColors.cardSurface
+  card-shadow: '#14000000'       # AppColors.cardShadow — black @ 8%, sombra estándar de tarjetas
+  disabled-fill: '#EDEDF2'       # AppColors.disabledFill — fondo de CTAs "próximamente"
+  disabled-text: '#A0A3AD'       # AppColors.disabledText
+  tint-blue-bg: '#E8F0FB'        # AppColors.tintBlueBg — fondo ícono "Mi perfil"
+  tint-purple: '#6D51D8'         # AppColors.tintPurple — ícono "Seguridad"
+  tint-purple-bg: '#F0EEFE'
+  tint-amber: '#B45309'          # AppColors.tintAmber — ícono "Notificaciones"
+  tint-amber-bg: '#FEF3CD'
+  tint-green-bg: '#E6F4EE'       # AppColors.tintGreenBg — fondo ícono "Ayuda"
+
   # ── Sistema Material 3 completo (reservado para v2) ───────────────
   primary: '#0047AB'
   on-primary: '#ffffff'
@@ -237,6 +249,33 @@ Ambient shadow con tint azul: `BoxShadow(color: Color(0xFF0047AB).withOpacity(0.
 
 ---
 
+## Movimiento y transiciones
+
+Actualización (2026-09): el MVP pasó de no tener casi ninguna transición entre
+pantallas a un set mínimo y consistente de patrones de movimiento. Todo usa
+widgets nativos de Flutter — no se agregó ninguna dependencia nueva.
+
+| Contexto | Patrón | Duración | Detalle |
+|---|---|---|---|
+| Navegación entre pantallas (`Navigator.push`) | `PageTransitionsTheme` global con `CupertinoPageTransitionsBuilder` en todas las plataformas | — | Reemplaza el fade+scale default de Material 3 por un slide nativo, más consistente entre Android/iOS/desktop. Definido una sola vez en `AppTheme.lightTheme`. |
+| Diálogos, bottom sheets, snackbars | `dialogTheme` / `bottomSheetTheme` / `snackBarTheme` centralizados | — | Radio 20px en diálogos y sheets, snackbar flotante con esquinas redondeadas. Los `Card`/`Chip` de Material **no** se usan en la app (todo es `Container`/`AnimatedContainer` a medida), por eso no existen `cardTheme`/`chipTheme` — agregarlos sería config muerta. |
+| Splash screen | Fade + scale-in (`TweenAnimationBuilder`) | 700ms | Logo circular Trust Blue + nombre + spinner. Reemplaza el spinner desnudo del MVP inicial. |
+| Cambio Splash → Auth/Wizard/Home | Crossfade (`AnimatedSwitcher` a nivel de `MaterialApp.home`) | 350ms | Antes era un salto instantáneo de widget. |
+| Banner GPS (aparece/desaparece) | `AnimatedSize` | 300ms | Reemplaza la inserción abrupta condicional en el `ListView` de Home. |
+| Card SISTEMA (Protegido ↔ Alerta) | Crossfade (`AnimatedSwitcher`) | 250ms | |
+| Preview de mapa en Home | Skeleton de carga → mapa real, crossfade (`AnimatedSwitcher`) | 300ms | Antes mostraba el mapa en blanco hasta que `PetsMapController` terminaba de inicializar. |
+| Botones de acción (Home) | Escala 0.97 al presionar (`AnimatedScale`) | 120ms | Feedback táctil consistente en ambos botones grandes. |
+| CTA "próximamente" (Home: Encontré un perro / Map: reportar avistamiento) | Estilo atenuado + badge | — | En vez de un CTA sólido que aparenta estar activo: fondo `disabled-fill`/ícono translúcido + badge "Próximamente" (Home) o punto ámbar (Map). Sigue siendo tappable (muestra el snackbar informativo) pero se lee como secundario. |
+| Pasos del wizard de registro | Fade + slide-up (`AnimatedSwitcher`) | 280ms | Antes el cambio de paso era un corte instantáneo entre `Scaffold`s. |
+| Foto seleccionada en `PhotoPickerWidget` | Crossfade placeholder ↔ foto (`AnimatedSwitcher`) + ripple al tocar | 250ms | |
+| Lista "Mis mascotas" | Entrada escalonada fade + slide-up por índice | 320ms, delay 35ms×índice (tope en 10) | |
+| Foto de mascota: tarjeta de lista → detalle | `Hero` compartido (tag `pet-photo-<id>`) | — | Morphing automático de rect+forma entre el thumbnail 72×72 de la lista y el avatar circular 100×100 del detalle. |
+| Punto de ubicación del usuario en el mapa | Anillo de radar en loop (`AnimationController` + `AnimatedBuilder`) | 1600ms | Antes eran tres círculos estáticos pese al comentario "pulso azul" en el código. |
+
+**Regla:** cualquier transición nueva debe usar `Curves.easeOut`/`easeOutCubic`
+para entradas y `Curves.easeIn` para salidas, y quedar entre 200-350ms para no
+sentirse lenta en el flujo de emergencia (reportar mascota perdida).
+
 ## Modo oscuro
 
 El sistema Material 3 definido en el frontmatter incluye los tokens para modo oscuro (`inverse-surface`, `inverse-on-surface`). La implementación se planifica para **v2** junto con el sistema de colores completo.
@@ -251,3 +290,39 @@ Para MVP, la app opera en modo claro exclusivamente. El `ThemeData` de Flutter d
 - El overlay HUD usa blanco puro sobre oscuro — relación de contraste > 7:1.
 - Ningún elemento transmite información únicamente a través del color (acompañar siempre con ícono o texto).
 - Tamaño mínimo de fuente 12px — `label-sm` es el límite absoluto.
+
+### Color de estado como texto — `AppColors.readable()` (2026-10)
+
+`emerald-green` (#50C878), `alert-amber` (#FFC107) y en menor medida `panic-red`
+no alcanzan 4.5:1 cuando se usan como **texto o ícono pequeño** sobre blanco o
+sobre su propio tinte al 12% (ámbar quedaba en ~1.6:1). Regla:
+
+- **Fondos, bordes, puntos y pines** → token original (`AppColors.esmeraldGreen`, etc.).
+- **Texto, íconos informativos y fondos con texto blanco encima** (chip activo,
+  snackbar de éxito) → `AppColors.readable(color)`: mismo tono oscurecido 40%
+  (`alertAmber` → `tintAmber`, `trustBlue` sin cambios). Verificado por test
+  (`test/ux_fixes_test.dart`).
+
+### Módulo Salud (`lib/features/health/`, 2026-10)
+
+Reutiliza los mismos patrones, sin estilos nuevos:
+
+| Pieza | Patrón de origen |
+|---|---|
+| `HealthCard` (blanca, radio 16, `cardShadow`, acento lateral 4px opcional) | Card SISTEMA de Home |
+| `StatusPill` (tinte 12% + ícono + texto `readable`) | Badges de estado de Mis mascotas |
+| Filas de sección con ícono en cuadro tintado 36×36 | Menú de Perfil |
+| Labels de sección en MAYÚSCULAS 12px | Detalle de mascota / Perfil |
+| Formularios (`HealthFormView`) | `inputDecorationTheme` global, botón primario 56px |
+
+- `due_status`: Al día → `esmeraldGreen`, Vence pronto → `alertAmber`, Vencida → `panicRed`, Renovada/Sin refuerzo → `outline` (tarjeta al 60% de opacidad si está renovada).
+- En **Home** los pendientes de salud usan borde **ámbar** aunque haya vencidos: el rojo en Home queda reservado a mascotas perdidas.
+- Alergias = alerta crítica médica → banner con tinte `panicRed` (único rojo del módulo además de "Vencida").
+- Un solo CTA primario por pantalla: "Mostrar al veterinario" en el resumen de Salud.
+
+### Otras reglas aplicadas
+
+- Controles solo-ícono (nav bar, FABs del mapa, pines) llevan `Semantics`/`Tooltip` con nombre y estado seleccionado.
+- Chips del mapa: área táctil de 48 dp aunque el pill visible mida 40 dp.
+- Animaciones en loop o decorativas (radar del usuario, entrada escalonada de la lista) se desactivan con "Quitar animaciones" del sistema.
+- SnackBars con acción: `persist: false` explícito (en Flutter ≥ 3.32 un SnackBar con acción no se auto-cierra por defecto).

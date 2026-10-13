@@ -168,8 +168,11 @@ class AppValidators {
       return null;
     }
 
-    // Remover espacios y guiones
-    final cleaned = value.replaceAll(RegExp(r'[\s\-]'), '');
+    // Remover espacios, guiones y el prefijo +591 opcional
+    // (el perfil guarda el número como "+591 71234567")
+    final cleaned = value
+        .replaceAll(RegExp(r'[\s\-]'), '')
+        .replaceFirst(RegExp(r'^\+?591(?=\d{8}$)'), '');
 
     // Bolivia: 8 dígitos, empieza con 6, 7 u 8
     final validPhone = RegExp(r'^[678]\d{7}$');

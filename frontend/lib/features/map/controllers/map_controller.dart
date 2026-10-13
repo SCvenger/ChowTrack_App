@@ -23,7 +23,9 @@ class PetsMapController extends ChangeNotifier {
   bool _isInitialized = false;
   String? _error;
   bool _locationEnabled = false;
-  bool _locationDenied = false;
+  bool _locationDenied = false;     // permiso denegado permanentemente
+  bool _permissionDenied = false;   // permiso denegado (cualquier tipo)
+  bool _serviceEnabled = true;      // GPS del sistema encendido
 
   // Generación de la última llamada a loadPetsNearby.
   // Descarta respuestas de llamadas anteriores (evita race condition).
@@ -50,13 +52,29 @@ class PetsMapController extends ChangeNotifier {
   String    get activeFilter    => _activeFilter;
   bool      get locationEnabled => _locationEnabled;
   bool      get locationDenied  => _locationDenied;
+  bool      get permissionDenied => _permissionDenied;
+  bool      get serviceEnabled  => _serviceEnabled;
+
+  /// Cantidad de mascotas visibles por filtro (para los chips del mapa).
+  int countFor(String filter) {
+    final visible = _allPets.where((p) => p.shouldShowOnMap());
+    return switch (filter) {
+      'perdidos'  => visible.where((p) => p.isLost).length,
+      'avistados' => visible.where((p) => p.isHome).length,
+      _           => visible.length,
+    };
+  }
 
   LatLng get userLatLng => _userPosition != null
       ? LatLng(_userPosition!.latitude, _userPosition!.longitude)
       : const LatLng(-17.3895, -66.1568); // Fallback: Cochabamba
 
+  /// Todas las mascotas visibles en el mapa, sin aplicar el chip de filtro.
+  List<MapPetModel> get visiblePets =>
+      _allPets.where((p) => p.shouldShowOnMap()).toList();
+
   List<MapPetModel> get filteredPets {
-    final visible = _allPets.where((p) => p.shouldShowOnMap()).toList();
+    final visible = visiblePets;
     return switch (_activeFilter) {
       'perdidos'  => visible.where((p) => p.isLost).toList(),
       'avistados' => visible.where((p) => p.isHome).toList(),
@@ -118,6 +136,7 @@ class PetsMapController extends ChangeNotifier {
       (status) {
         if (status == ServiceStatus.disabled) {
           _locationEnabled = false;
+          _serviceEnabled = false;
           notifyListeners();
         } else {
           refreshLocation();
@@ -148,9 +167,10 @@ class PetsMapController extends ChangeNotifier {
     _isInitialized = true;
     notifyListeners();
     // Refresco automático cada 30 s para propagar cambios de otros usuarios
+    // silent: no muestra el badge "Cargando…" cada 30 s en el mapa
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 30),
-      (_) => loadPetsNearby(),
+      (_) => loadPetsNearby(silent: true),
     );
   }
 
@@ -160,9 +180,14 @@ class PetsMapController extends ChangeNotifier {
   // una posición nueva (puede tardar varios segundos).
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<void> _fetchLocation() async {
+  /// [askPermission]: solo se pide el permiso en la inicialización o por
+  /// acción explícita del usuario. Pedirlo al volver a la app causaba un
+  /// bucle en Android (el diálogo pausa/reanuda la app → se vuelve a pedir)
+  /// que terminaba en "denegado para siempre" tras dos rechazos.
+  Future<void> _fetchLocation({bool askPermission = true}) async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      _serviceEnabled = serviceEnabled;
       if (!serviceEnabled) {
         _locationEnabled = false;
         notifyListeners();
@@ -170,16 +195,18 @@ class PetsMapController extends ChangeNotifier {
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
+      if (permission == LocationPermission.denied && askPermission) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         _locationEnabled = false;
+        _permissionDenied = true;
         _locationDenied = permission == LocationPermission.deniedForever;
         notifyListeners();
         return;
       }
+      _permissionDenied = false;
 
       // 1. Última posición conocida — devuelve resultado inmediato
       Position? pos = await Geolocator.getLastKnownPosition();
@@ -206,7 +233,29 @@ class PetsMapController extends ChangeNotifier {
   /// El delay de 600ms evita el falso negativo del SO justo al resume.
   Future<void> refreshLocation() async {
     await Future.delayed(const Duration(milliseconds: 600));
-    await _fetchLocation();
+    await _fetchLocation(askPermission: false);
+    if (_locationEnabled) {
+      await loadPetsNearby();
+      centerOnUser();
+    }
+  }
+
+  /// Acción del botón "Activar" (banner de Home / badge del mapa).
+  /// Resuelve la causa real en vez de abrir siempre los ajustes de ubicación:
+  /// - GPS apagado            → ajustes de ubicación del sistema
+  /// - permiso denegado       → vuelve a pedir el permiso
+  /// - denegado para siempre  → ajustes de la app (único lugar donde se cambia)
+  /// Al volver de los ajustes, el lifecycle observer refresca el estado.
+  Future<void> requestLocationAccess() async {
+    if (!_serviceEnabled) {
+      await Geolocator.openLocationSettings();
+      return;
+    }
+    if (_locationDenied) {
+      await Geolocator.openAppSettings();
+      return;
+    }
+    await _fetchLocation(askPermission: true);
     if (_locationEnabled) {
       await loadPetsNearby();
       centerOnUser();
@@ -220,13 +269,17 @@ class PetsMapController extends ChangeNotifier {
   // Solo la última llamada aplica su resultado — las anteriores son descartadas.
   // ═══════════════════════════════════════════════════════════════════════════
 
-  Future<void> loadPetsNearby() async {
+  /// [silent]: refresco en segundo plano (timer). No enciende el indicador
+  /// de carga y, si falla, conserva los pines anteriores sin mostrar error.
+  Future<void> loadPetsNearby({bool silent = false}) async {
     _loadGen++;
     final gen = _loadGen;
 
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+    if (!silent) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    }
 
     try {
       final pets = await MapService.getPetsNearby(
@@ -236,12 +289,15 @@ class PetsMapController extends ChangeNotifier {
 
       if (gen != _loadGen) return; // respuesta vieja — descartar
       _allPets = pets;
+      _error = null;
     } on MapServiceException catch (e) {
       if (gen != _loadGen) return;
-      _error = e.message;
+      if (!silent || _allPets.isEmpty) _error = e.message;
     } catch (_) {
       if (gen != _loadGen) return;
-      _error = 'No se pudieron cargar las mascotas cercanas.';
+      if (!silent || _allPets.isEmpty) {
+        _error = 'No se pudieron cargar las mascotas cercanas.';
+      }
     } finally {
       // Solo el último request apaga el spinner y notifica
       if (gen == _loadGen) {
@@ -289,6 +345,8 @@ class PetsMapController extends ChangeNotifier {
     _isInitialized = false;
     _locationEnabled = false;
     _locationDenied = false;
+    _permissionDenied = false;
+    _serviceEnabled = true;
     _error = null;
     notifyListeners();
   }

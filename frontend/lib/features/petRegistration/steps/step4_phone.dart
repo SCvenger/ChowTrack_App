@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/app_theme.dart';
 import '../../../core/utils/app_validators.dart';
 import '../widgets/progress_indicator.dart';
 
 class Step4Phone extends StatefulWidget {
   final Function(String?) onComplete;
+  final VoidCallback onBack;
+
+  /// Teléfono ya ingresado ("+591 71234567") al volver desde el resumen.
+  final String? initialPhone;
 
   const Step4Phone({
     super.key,
     required this.onComplete,
+    required this.onBack,
+    this.initialPhone,
   });
 
   @override
@@ -17,7 +24,9 @@ class Step4Phone extends StatefulWidget {
 
 class _Step4PhoneState extends State<Step4Phone> {
   final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController();
+  late final _phoneController = TextEditingController(
+    text: widget.initialPhone?.replaceFirst('+591 ', ''),
+  );
 
   void _submitForm() {
     if (_formKey.currentState!.validate()) {
@@ -42,7 +51,18 @@ class _Step4PhoneState extends State<Step4Phone> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: 'Volver',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: widget.onBack,
+        ),
+        title: const ProgressIndicatorr(currentStep: 4),
+        centerTitle: true,
+      ),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: AppTheme.marginMobile,
@@ -53,14 +73,6 @@ class _Step4PhoneState extends State<Step4Phone> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Progreso
-                const Align(
-                  alignment: Alignment.center,
-                  child: ProgressIndicatorr(currentStep: 4),
-                ),
-
-                SizedBox(height: AppTheme.stackMd),
-
                 // Título
                 Text(
                   '¿Cómo te contactamos?',
@@ -89,6 +101,13 @@ class _Step4PhoneState extends State<Step4Phone> {
                     prefixText: '+591 ',
                   ),
                   keyboardType: TextInputType.phone,
+                  autofillHints: const [AutofillHints.telephoneNumberNational],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(8),
+                  ],
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _submitForm(),
                   style: AppTheme.bodyMd,
                   validator: AppValidators.phoneBolivia,
                 ),

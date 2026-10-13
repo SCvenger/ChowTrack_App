@@ -98,9 +98,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isSaving = false);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Perfil actualizado correctamente'),
-        backgroundColor: AppColors.esmeraldGreen,
+      SnackBar(
+        content: const Text('Perfil actualizado correctamente'),
+        backgroundColor: AppColors.readable(AppColors.esmeraldGreen),
       ),
     );
 

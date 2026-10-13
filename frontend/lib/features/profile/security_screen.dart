@@ -42,9 +42,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
     setState(() => _isSaving = false);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Contraseña actualizada correctamente'),
-        backgroundColor: AppColors.esmeraldGreen,
+      SnackBar(
+        content: const Text('Contraseña actualizada correctamente'),
+        backgroundColor: AppColors.readable(AppColors.esmeraldGreen),
       ),
     );
 

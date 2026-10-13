@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'navigation_controller.dart';
 import 'widgets/floating_nav_bar.dart';
-import '../home/homeView.dart';
+import '../home/homeview.dart';
 import '../map/mapView.dart';
 import '../pets/petsView.dart';
 import '../profile/profileView.dart';
@@ -35,9 +35,11 @@ class HomeShell extends StatelessWidget {
         final currentNav =
             navController.navigatorKeys[navController.currentIndex].currentState;
 
-        // Si hay pantallas en el stack del tab actual, hace pop
+        // Si hay pantallas en el stack del tab actual, hace pop.
+        // maybePop (no pop) respeta el PopScope de la ruta: así el wizard
+        // retrocede un paso en vez de cerrarse y perder lo ingresado.
         if (currentNav != null && currentNav.canPop()) {
-          currentNav.pop();
+          currentNav.maybePop();
           return;
         }
 

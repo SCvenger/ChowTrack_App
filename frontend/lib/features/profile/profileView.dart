@@ -1,10 +1,10 @@
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/app_theme.dart';
 import '../auth/auth_controller.dart';
+import '../health/controllers/health_reminders_controller.dart';
 import '../map/controllers/map_controller.dart';
 import '../navigation/navigation_controller.dart';
 import '../pets/controllers/pets_controller.dart';
@@ -38,10 +38,9 @@ class _ProfileViewState extends State<ProfileView> {
   void _openSubScreen(Widget screen) {
     final nav = context.read<NavigationController>();
     nav.hideNavBar();
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => screen),
-    ).then((_) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => screen)).then((
+      _,
+    ) {
       if (mounted) nav.showNavBar();
     });
   }
@@ -65,9 +64,7 @@ class _ProfileViewState extends State<ProfileView> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.panicRed,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.panicRed),
             child: const Text('Cerrar sesión'),
           ),
         ],
@@ -81,6 +78,10 @@ class _ProfileViewState extends State<ProfileView> {
     // Limpia también el mapa para que el siguiente usuario
     // no vea las mascotas/posición de la sesión anterior
     context.read<PetsMapController>().clear();
+    context.read<HealthRemindersController>().clear();
+    // El próximo login entra en Home con la barra visible (antes
+    // reaparecía en el tab Perfil de la sesión anterior).
+    context.read<NavigationController>().reset();
     await context.read<AuthController>().logout();
   }
 
@@ -97,7 +98,13 @@ class _ProfileViewState extends State<ProfileView> {
         displayName: profile?.displayName,
         onImagePicked: (path) {
           Navigator.pop(ctx);
-          // TODO: subir a Supabase Storage y actualizar perfil
+          // TODO: subir a Supabase Storage y actualizar perfil.
+          // Mientras tanto se avisa, en vez de descartar la foto en silencio.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Próximamente: actualización de foto de perfil'),
+            ),
+          );
         },
       ),
     );
@@ -140,7 +147,7 @@ class _ProfileViewState extends State<ProfileView> {
                   _SettingsRow(
                     icon: Icons.person_outline,
                     iconColor: AppColors.trustBlue,
-                    iconBg: const Color(0xFFE8F0FB),
+                    iconBg: AppColors.tintBlueBg,
                     title: 'Mi perfil',
                     subtitle: 'Nombre, teléfono, foto',
                     onTap: () => _openSubScreen(const EditProfileScreen()),
@@ -148,8 +155,8 @@ class _ProfileViewState extends State<ProfileView> {
                   const _Divider(),
                   _SettingsRow(
                     icon: Icons.lock_outline,
-                    iconColor: const Color(0xFF6D51D8),
-                    iconBg: const Color(0xFFF0EEFE),
+                    iconColor: AppColors.tintPurple,
+                    iconBg: AppColors.tintPurpleBg,
                     title: 'Seguridad',
                     subtitle: 'Cambiar contraseña',
                     onTap: () => _openSubScreen(const SecurityScreen()),
@@ -170,8 +177,8 @@ class _ProfileViewState extends State<ProfileView> {
                 children: [
                   _ToggleRow(
                     icon: Icons.notifications_outlined,
-                    iconColor: const Color(0xFFB45309),
-                    iconBg: const Color(0xFFFEF3CD),
+                    iconColor: AppColors.tintAmber,
+                    iconBg: AppColors.tintAmberBg,
                     title: 'Notificaciones',
                     subtitle: 'Alertas y avisos de mascotas',
                     value: _notificationsEnabled,
@@ -195,7 +202,7 @@ class _ProfileViewState extends State<ProfileView> {
                   _SettingsRow(
                     icon: Icons.help_outline,
                     iconColor: AppColors.esmeraldGreen,
-                    iconBg: const Color(0xFFE6F4EE),
+                    iconBg: AppColors.tintGreenBg,
                     title: 'Ayuda y soporte',
                     subtitle: 'Preguntas frecuentes',
                     isPlaceholder: true,
@@ -228,10 +235,7 @@ class _ProfileViewState extends State<ProfileView> {
                 label: const Text('Cerrar sesión'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.panicRed,
-                  side: const BorderSide(
-                    color: AppColors.panicRed,
-                    width: 0.5,
-                  ),
+                  side: const BorderSide(color: AppColors.panicRed, width: 0.5),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
               ),
@@ -253,9 +257,9 @@ class _ProfileViewState extends State<ProfileView> {
   }
 
   void _showComingSoon() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Próximamente disponible')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Próximamente disponible')));
   }
 }
 
@@ -282,43 +286,49 @@ class _ProfileHeader extends StatelessWidget {
       child: Column(
         children: [
           // Avatar tappable
-          GestureDetector(
-            onTap: onAvatarTap,
-            child: Stack(
-              children: [
-                CircleAvatar(
-                  radius: 48,
-                  backgroundColor: AppColors.inputFill,
-                  backgroundImage: profile?.avatarUrl != null
-                      ? NetworkImage(profile!.avatarUrl!)
-                      : null,
-                  child: profile?.avatarUrl == null
-                      ? const Icon(
-                          Icons.person,
-                          size: 48,
-                          color: AppColors.trustBlue,
-                        )
-                      : null,
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: AppColors.trustBlue,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      size: 14,
-                      color: Colors.white,
+          Semantics(
+            button: true,
+            label: 'Foto de perfil',
+            hint: 'Ver o cambiar',
+            excludeSemantics: true,
+            child: GestureDetector(
+              onTap: onAvatarTap,
+              child: Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 48,
+                    backgroundColor: AppColors.inputFill,
+                    backgroundImage: profile?.avatarUrl != null
+                        ? NetworkImage(profile!.avatarUrl!)
+                        : null,
+                    child: profile?.avatarUrl == null
+                        ? const Icon(
+                            Icons.person,
+                            size: 48,
+                            color: AppColors.trustBlue,
+                          )
+                        : null,
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: AppColors.trustBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        size: 14,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
@@ -380,14 +390,11 @@ class _PhotoViewerDialog extends StatelessWidget {
           CircleAvatar(
             radius: 100,
             backgroundColor: AppColors.inputFill,
-            backgroundImage:
-                avatarUrl != null ? NetworkImage(avatarUrl!) : null,
+            backgroundImage: avatarUrl != null
+                ? NetworkImage(avatarUrl!)
+                : null,
             child: avatarUrl == null
-                ? const Icon(
-                    Icons.person,
-                    size: 80,
-                    color: AppColors.trustBlue,
-                  )
+                ? const Icon(Icons.person, size: 80, color: AppColors.trustBlue)
                 : null,
           ),
 
@@ -452,8 +459,10 @@ class _PhotoAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Container(
         width: double.infinity,
+        constraints: const BoxConstraints(minHeight: AppTheme.tapTarget),
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.12),
@@ -463,10 +472,7 @@ class _PhotoAction extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white, size: 22),
             const SizedBox(width: 14),
-            Text(
-              label,
-              style: AppTheme.bodyMd.copyWith(color: Colors.white),
-            ),
+            Text(label, style: AppTheme.bodyMd.copyWith(color: Colors.white)),
           ],
         ),
       ),
@@ -576,9 +582,7 @@ class _SettingsRow extends StatelessWidget {
                     Text(
                       title,
                       style: AppTheme.bodyMd.copyWith(
-                        color: isPlaceholder
-                            ? AppColors.outline
-                            : null,
+                        color: isPlaceholder ? AppColors.outline : null,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -629,42 +633,51 @@ class _ToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: iconBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: iconColor, size: 18),
-          ),
-
-          const SizedBox(width: 14),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppTheme.bodyMd),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+    // MergeSemantics: título + interruptor se anuncian juntos, y tocar
+    // cualquier parte de la fila cambia el valor (área táctil completa).
+    return MergeSemantics(
+      child: InkWell(
+        onTap: () => onChanged(!value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ],
-            ),
-          ),
+                child: Icon(icon, color: iconColor, size: 18),
+              ),
 
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: AppColors.trustBlue,
+              const SizedBox(width: 14),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: AppTheme.bodyMd),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: AppTheme.labelSm.copyWith(
+                        color: AppColors.outline,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeThumbColor: AppColors.trustBlue,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

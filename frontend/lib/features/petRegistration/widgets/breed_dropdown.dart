@@ -41,6 +41,7 @@ class _BreedDropdownState extends State<BreedDropdown> {
   final TextEditingController searchController = TextEditingController();
   final TextEditingController customBreedController = TextEditingController();
   bool showCustomBreedInput = false;
+  String? _customBreedError;
 
   @override
   void initState() {
@@ -89,13 +90,10 @@ class _BreedDropdownState extends State<BreedDropdown> {
     final customBreed = customBreedController.text.trim();
     final error = AppValidators.customBreed(customBreed);
 
+    // Error junto al campo (antes era un snackbar que quedaba detrás
+    // de la barrera oscura del diálogo).
     if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: AppColors.panicRed,
-        ),
-      );
+      setState(() => _customBreedError = error);
       return;
     }
 
@@ -147,11 +145,16 @@ class _BreedDropdownState extends State<BreedDropdown> {
                       children: [
                         TextField(
                           controller: customBreedController,
-                          decoration: const InputDecoration(
+                          autofocus: true,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: InputDecoration(
                             hintText: 'Ej: Dogo Argentino',
                             labelText: 'Nombre de la raza',
+                            errorText: _customBreedError,
                           ),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) =>
+                              setState(() => _customBreedError = null),
+                          onSubmitted: (_) => _confirmCustomBreed(),
                           style: AppTheme.bodyMd,
                         ),
                         const SizedBox(height: 12),
@@ -196,7 +199,10 @@ class _BreedDropdownState extends State<BreedDropdown> {
                     return ListTile(
                       title: Text(breed, style: AppTheme.bodyMd),
                       trailing: isSelected
-                          ? Icon(Icons.check, color: AppColors.esmeraldGreen)
+                          ? Icon(
+                              Icons.check,
+                              color: AppColors.readable(AppColors.esmeraldGreen),
+                            )
                           : null,
                       onTap: () => _selectBreed(breed),
                       tileColor: isSelected
@@ -251,11 +257,21 @@ class BreedField extends StatefulWidget {
 
 class _BreedFieldState extends State<BreedField> {
   late String? selectedBreed;
+  // Un solo controller (antes se creaba uno nuevo en cada build y no se
+  // liberaba nunca).
+  late final TextEditingController _controller;
 
   @override
   void initState() {
     super.initState();
     selectedBreed = widget.initialBreed;
+    _controller = TextEditingController(text: selectedBreed ?? '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -268,6 +284,7 @@ class _BreedFieldState extends State<BreedField> {
             initialBreed: selectedBreed,
             onBreedSelected: (breed) {
               setState(() => selectedBreed = breed);
+              _controller.text = breed;
               widget.onBreedSelected(breed);
             },
           ),
@@ -280,7 +297,7 @@ class _BreedFieldState extends State<BreedField> {
             hintText: 'Selecciona una raza',
             suffixIcon: Icon(Icons.arrow_drop_down),
           ),
-          controller: TextEditingController(text: selectedBreed ?? ''),
+          controller: _controller,
           style: AppTheme.bodyMd,
           validator: (value) {
             if (value == null || value.isEmpty) {

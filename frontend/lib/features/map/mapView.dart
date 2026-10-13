@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:chowtrack/features/map/controllers/map_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:http/http.dart' as http;
@@ -13,7 +14,6 @@ import 'package:provider/provider.dart';
 import '../../core/api_config.dart';
 import '../../core/app_theme.dart';
 import 'models/map_pet_model.dart';
-
 
 class MapView extends StatefulWidget {
   const MapView({super.key});
@@ -61,10 +61,7 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
       begin: mapCtrl.camera.center.longitude,
       end: destination.longitude,
     );
-    final zoomTween = Tween<double>(
-      begin: mapCtrl.camera.zoom,
-      end: zoom,
-    );
+    final zoomTween = Tween<double>(begin: mapCtrl.camera.zoom, end: zoom);
 
     _moveController = AnimationController(
       duration: const Duration(milliseconds: 800),
@@ -78,10 +75,7 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
 
     _moveController!.addListener(() {
       mapCtrl.move(
-        LatLng(
-          latTween.evaluate(animation),
-          lngTween.evaluate(animation),
-        ),
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
         zoomTween.evaluate(animation),
       );
     });
@@ -168,10 +162,16 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
                     width: 52,
                     height: 64,
                     alignment: Alignment.topCenter,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _showPetDetails(pet),
-                      child: _PetMarker(pet: pet),
+                    child: Semantics(
+                      button: true,
+                      label: '${pet.name}, ${pet.statusLabel}',
+                      hint: 'Ver detalles',
+                      excludeSemantics: true,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => _showPetDetails(pet),
+                        child: _PetMarker(pet: pet),
+                      ),
                     ),
                   );
                 }).toList(),
@@ -191,6 +191,7 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
                 Center(
                   child: _FilterChips(
                     active: ctrl.activeFilter,
+                    countFor: ctrl.countFor,
                     onChanged: ctrl.setFilter,
                   ),
                 ),
@@ -212,10 +213,53 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
                   ),
                 ],
 
-                // Badge de GPS desactivado
+                // Estado vacío: sin esto, un filtro sin resultados se veía
+                // igual que un mapa que todavía no cargó.
+                if (ctrl.isInitialized &&
+                    !ctrl.isLoading &&
+                    ctrl.error == null &&
+                    ctrl.filteredPets.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Center(
+                    child: _Badge(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline,
+                            color: AppColors.outline,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            switch (ctrl.activeFilter) {
+                              'perdidos' => 'Sin mascotas perdidas en 5 km',
+                              'avistados' =>
+                                'Sin mascotas encontradas en la última hora',
+                              _ => 'Sin reportes en 5 km a la redonda',
+                            },
+                            style: AppTheme.labelSm.copyWith(
+                              color: AppColors.outline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+
+                // Badge de GPS desactivado — tocable: resuelve la causa
+                // (GPS apagado / permiso) igual que el banner de Home.
                 if (!ctrl.locationEnabled && !ctrl.isLoading) ...[
                   const SizedBox(height: 8),
-                  const Center(child: _GpsOffBadge()),
+                  Center(
+                    child: _GpsOffBadge(
+                      onTap: ctrl.requestLocationAccess,
+                      actionLabel: !ctrl.serviceEnabled
+                          ? 'Activar'
+                          : (ctrl.locationDenied ? 'Ajustes' : 'Permitir'),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -227,6 +271,7 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
             bottom: 88 + 16 + bottomPadding,
             child: _MapFab(
               icon: Icons.my_location,
+              tooltip: 'Centrar en mi ubicación',
               onTap: () => _animatedMove(ctrl.userLatLng, 14),
             ),
           ),
@@ -238,6 +283,8 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
             child: _MapFab(
               icon: Icons.add_location_alt_outlined,
               color: AppColors.esmeraldGreen,
+              tooltip: 'Reportar avistamiento (próximamente)',
+              comingSoon: true,
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Próximamente disponible')),
@@ -253,7 +300,7 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
   void _showPetDetails(MapPetModel pet) {
     showModalBottomSheet(
       context: context,
-      useRootNavigator: true,   // sube sobre la nav bar flotante
+      useRootNavigator: true, // sube sobre la nav bar flotante
       isScrollControlled: true, // altura dinámica según contenido
       backgroundColor: Colors.transparent,
       builder: (_) => _PetBottomSheet(pet: pet),
@@ -265,20 +312,60 @@ class _MapViewState extends State<MapView> with TickerProviderStateMixin {
 // MARCADOR: Ubicación del usuario (pulso azul)
 // ═════════════════════════════════════════════════════════════════════════════
 
-class _UserLocationMarker extends StatelessWidget {
+class _UserLocationMarker extends StatefulWidget {
   const _UserLocationMarker();
+
+  @override
+  State<_UserLocationMarker> createState() => _UserLocationMarkerState();
+}
+
+class _UserLocationMarkerState extends State<_UserLocationMarker>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Respeta "Quitar animaciones" del sistema: el radar queda estático.
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pulseController.stop();
+      _pulseController.value = 0.5;
+    } else if (!_pulseController.isAnimating) {
+      _pulseController.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       alignment: Alignment.center,
       children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.trustBlue.withValues(alpha: 0.15),
+        // Anillo de radar: se expande y se desvanece en loop
+        AnimatedBuilder(
+          animation: _pulseController,
+          builder: (context, child) {
+            final t = _pulseController.value;
+            return Opacity(
+              opacity: (1 - t) * 0.45,
+              child: Transform.scale(scale: 0.5 + t * 1.1, child: child),
+            );
+          },
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.trustBlue.withValues(alpha: 0.35),
+            ),
           ),
         ),
         Container(
@@ -389,44 +476,62 @@ class _PinTailPainter extends CustomPainter {
 
 class _FilterChips extends StatelessWidget {
   final String active;
+  final int Function(String filter) countFor;
   final ValueChanged<String> onChanged;
 
-  const _FilterChips({required this.active, required this.onChanged});
+  const _FilterChips({
+    required this.active,
+    required this.countFor,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _Chip(label: 'Todos', id: 'todos', active: active, onTap: onChanged),
-          _Chip(
-            label: 'Perdidos',
-            id: 'perdidos',
-            active: active,
-            onTap: onChanged,
-            activeColor: AppColors.panicRed,
-          ),
-          _Chip(
-            label: 'Encontrados',
-            id: 'avistados',
-            active: active,
-            onTap: onChanged,
-            activeColor: AppColors.esmeraldGreen,
-          ),
-        ],
+    // scaleDown: en pantallas angostas (≤ 340 dp) o con texto grande del
+    // sistema, la barra se achica en vez de desbordarse por los costados.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _Chip(
+              label: 'Todos',
+              id: 'todos',
+              count: countFor('todos'),
+              active: active,
+              onTap: onChanged,
+            ),
+            _Chip(
+              label: 'Perdidos',
+              id: 'perdidos',
+              count: countFor('perdidos'),
+              active: active,
+              onTap: onChanged,
+              activeColor: AppColors.panicRed,
+            ),
+            _Chip(
+              label: 'Encontrados',
+              id: 'avistados',
+              count: countFor('avistados'),
+              active: active,
+              onTap: onChanged,
+              // Verde legible: blanco sobre #50C878 no llega a 3:1
+              activeColor: AppColors.readable(AppColors.esmeraldGreen),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -435,6 +540,7 @@ class _FilterChips extends StatelessWidget {
 class _Chip extends StatelessWidget {
   final String label;
   final String id;
+  final int count;
   final String active;
   final ValueChanged<String> onTap;
   final Color activeColor;
@@ -442,6 +548,7 @@ class _Chip extends StatelessWidget {
   const _Chip({
     required this.label,
     required this.id,
+    required this.count,
     required this.active,
     required this.onTap,
     this.activeColor = AppColors.trustBlue,
@@ -451,20 +558,38 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => onTap(id),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isActive ? activeColor : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          style: AppTheme.labelSm.copyWith(
-            color: isActive ? Colors.white : AppColors.outline,
-            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+    // Área táctil de 48 dp (DESIGN.md: tap-target-min); el pill visible
+    // mide 40 dp y queda centrado con 4 dp de margen dentro de la barra.
+    return Semantics(
+      button: true,
+      selected: isActive,
+      label: '$label, $count',
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (!isActive) HapticFeedback.selectionClick();
+          onTap(id);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            constraints: const BoxConstraints(minHeight: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isActive ? activeColor : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '$label · $count',
+              style: AppTheme.labelSm.copyWith(
+                color: isActive ? Colors.white : AppColors.outline,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
           ),
         ),
       ),
@@ -478,34 +603,62 @@ class _Chip extends StatelessWidget {
 
 class _MapFab extends StatelessWidget {
   final IconData icon;
+  final String tooltip;
   final VoidCallback onTap;
   final Color color;
+  final bool comingSoon;
 
   const _MapFab({
     required this.icon,
+    required this.tooltip,
     required this.onTap,
     this.color = AppColors.trustBlue,
+    this.comingSoon = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 3,
+        shadowColor: Colors.black.withValues(alpha: 0.3),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Center(
+                  child: Icon(
+                    icon,
+                    color: comingSoon ? color.withValues(alpha: 0.5) : color,
+                    size: 22,
+                  ),
+                ),
+                if (comingSoon)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: AppColors.alertAmber,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          ],
+          ),
         ),
-        child: Icon(icon, color: color, size: 22),
       ),
     );
   }
@@ -560,7 +713,7 @@ class _ErrorBadge extends StatelessWidget {
             const Icon(Icons.wifi_off, color: AppColors.panicRed, size: 16),
             const SizedBox(width: 8),
             Text(
-              'Sin datos · Tocar para reintentar',
+              'Sin conexión · Tocar para reintentar',
               style: AppTheme.labelSm.copyWith(color: AppColors.outline),
             ),
           ],
@@ -571,21 +724,43 @@ class _ErrorBadge extends StatelessWidget {
 }
 
 class _GpsOffBadge extends StatelessWidget {
-  const _GpsOffBadge();
+  final VoidCallback onTap;
+  final String actionLabel;
+
+  const _GpsOffBadge({required this.onTap, required this.actionLabel});
 
   @override
   Widget build(BuildContext context) {
-    return _Badge(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.location_off, color: AppColors.alertAmber, size: 16),
-          const SizedBox(width: 8),
-          Text(
-            'Ubicación desactivada',
-            style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+    return Semantics(
+      button: true,
+      label: 'Ubicación desactivada. $actionLabel',
+      excludeSemantics: true,
+      child: GestureDetector(
+        onTap: onTap,
+        child: _Badge(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.location_off,
+                color: AppColors.tintAmber,
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Ubicación desactivada · ',
+                style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+              ),
+              Text(
+                actionLabel,
+                style: AppTheme.labelSm.copyWith(
+                  color: AppColors.trustBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -604,10 +779,7 @@ class _Badge extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 6,
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 6),
         ],
       ),
       child: child,
@@ -636,6 +808,12 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
   String? _address;
   bool _loadingAddress = true;
 
+  // Header/botón con texto blanco o de color: el verde puro no llega a
+  // contraste AA → variante legible. El pin del mapa conserva el token.
+  Color get _headerColor => widget.pet.isHome
+      ? AppColors.readable(AppColors.esmeraldGreen)
+      : widget.pet.markerColor;
+
   String get _cacheKey =>
       '${widget.pet.lat.toStringAsFixed(4)},${widget.pet.lng.toStringAsFixed(4)}';
 
@@ -653,7 +831,10 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
 
     // Hit de caché: mostrar resultado inmediatamente, sin red
     if (_geocodeCache.containsKey(key)) {
-      setState(() { _address = _geocodeCache[key]; _loadingAddress = false; });
+      setState(() {
+        _address = _geocodeCache[key];
+        _loadingAddress = false;
+      });
       return;
     }
 
@@ -668,16 +849,31 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
           .timeout(const Duration(seconds: 8));
 
       if (res.statusCode == 200) {
-        final data   = jsonDecode(res.body) as Map<String, dynamic>;
-        final addr   = data['address']  as Map<String, dynamic>?;
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final addr = data['address'] as Map<String, dynamic>?;
         final result = _buildAddress(addr, data['display_name'] as String?);
         _geocodeCache[key] = result; // guardar en caché
-        if (mounted) setState(() { _address = result; _loadingAddress = false; });
+        if (mounted) {
+          setState(() {
+            _address = result;
+            _loadingAddress = false;
+          });
+        }
       } else {
-        if (mounted) setState(() { _address = null; _loadingAddress = false; });
+        if (mounted) {
+          setState(() {
+            _address = null;
+            _loadingAddress = false;
+          });
+        }
       }
     } catch (_) {
-      if (mounted) setState(() { _address = null; _loadingAddress = false; });
+      if (mounted) {
+        setState(() {
+          _address = null;
+          _loadingAddress = false;
+        });
+      }
     }
   }
 
@@ -686,18 +882,19 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
       // fallback: primeras dos partes del display_name
       return displayName?.split(',').take(2).join(',').trim() ?? '';
     }
-    final road    = addr['road']          as String?;
-    final suburb  = addr['suburb']        as String?
-                 ?? addr['neighbourhood'] as String?;
-    final city    = addr['city']          as String?
-                 ?? addr['town']          as String?
-                 ?? addr['village']       as String?;
+    final road = addr['road'] as String?;
+    final suburb =
+        addr['suburb'] as String? ?? addr['neighbourhood'] as String?;
+    final city =
+        addr['city'] as String? ??
+        addr['town'] as String? ??
+        addr['village'] as String?;
 
     if (road != null && suburb != null) return '$road, $suburb';
-    if (road != null && city != null)   return '$road, $city';
-    if (road != null)                   return road;
-    if (suburb != null)                 return suburb;
-    if (city != null)                   return city;
+    if (road != null && city != null) return '$road, $city';
+    if (road != null) return road;
+    if (suburb != null) return suburb;
+    if (city != null) return city;
     return displayName?.split(',').take(2).join(',').trim() ?? '';
   }
 
@@ -706,10 +903,12 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
     final dt = DateTime.tryParse(widget.pet.lastSeenAt!)?.toLocal();
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1)  return 'Hace un momento';
-    if (diff.inMinutes < 60) return 'Hace ${diff.inMinutes} min';
-    if (diff.inHours < 24)   return 'Hace ${diff.inHours} h';
-    return 'Hace ${diff.inDays} días';
+    final prefix = widget.pet.isHome ? 'Encontrada' : 'Vista por última vez';
+    if (diff.inMinutes < 1) return '$prefix hace un momento';
+    if (diff.inMinutes < 60) return '$prefix hace ${diff.inMinutes} min';
+    if (diff.inHours < 24) return '$prefix hace ${diff.inHours} h';
+    final d = diff.inDays;
+    return '$prefix hace $d ${d == 1 ? 'día' : 'días'}';
   }
 
   // Foto expandida en pantalla completa al tocarla
@@ -737,7 +936,7 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final pet       = widget.pet;
+    final pet = widget.pet;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -748,11 +947,10 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-
           // ── HEADER coloreado: rojo=perdido, azul=en proceso, verde=en casa ──
           Container(
             width: double.infinity,
-            color: pet.markerColor,
+            color: _headerColor,
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: Column(
               children: [
@@ -812,7 +1010,11 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
                             color: Colors.black.withValues(alpha: 0.45),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.zoom_in, color: Colors.white, size: 14),
+                          child: const Icon(
+                            Icons.zoom_in,
+                            color: Colors.white,
+                            size: 14,
+                          ),
                         ),
                     ],
                   ),
@@ -861,8 +1063,8 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
                   text: _loadingAddress
                       ? 'Obteniendo ubicación…'
                       : (_address?.isNotEmpty == true
-                          ? _address!
-                          : 'Ubicación desconocida'),
+                            ? _address!
+                            : 'Ubicación desconocida'),
                 ),
 
                 const SizedBox(height: 12),
@@ -871,8 +1073,10 @@ class _PetBottomSheetState extends State<_PetBottomSheet> {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: pet.markerColor,
-                      side: BorderSide(color: pet.markerColor.withValues(alpha: 0.4)),
+                      foregroundColor: _headerColor,
+                      side: BorderSide(
+                        color: _headerColor.withValues(alpha: 0.4),
+                      ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: const Text('Cerrar'),
@@ -917,12 +1121,14 @@ class _InfoRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.outline),
-          const SizedBox(width: 8),
+          Icon(icon, size: 18, color: AppColors.outline),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               text,
-              style: AppTheme.labelSm.copyWith(color: AppColors.outline),
+              // Dato clave para quien busca la mascota: tamaño de cuerpo
+              // (DESIGN.md: el texto de cuerpo nunca baja de 16px).
+              style: AppTheme.bodyMd.copyWith(color: AppColors.black),
             ),
           ),
         ],

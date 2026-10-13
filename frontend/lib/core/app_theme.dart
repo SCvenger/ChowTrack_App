@@ -1,4 +1,5 @@
 
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -12,6 +13,30 @@ class AppColors {
   static const Color outline      = Color(0xFF737784);
   static const Color black        = Color(0xFF000000);
   static const Color alertAmber  = Color(0xFFFFC107);
+
+  // Tokens auxiliares para superficies/sombras (evita literales Colors.* sueltos)
+  static const Color cardSurface  = Color(0xFFFFFFFF);
+  static const Color cardShadow   = Color(0x14000000); // black @ 8%
+  static const Color disabledFill = Color(0xFFEDEDF2);
+  static const Color disabledText = Color(0xFFA0A3AD);
+
+  // Tintes de íconos de categoría (menú de Perfil) — evita hex sueltos por widget
+  static const Color tintBlueBg   = Color(0xFFE8F0FB);
+  static const Color tintPurple   = Color(0xFF6D51D8);
+  static const Color tintPurpleBg = Color(0xFFF0EEFE);
+  static const Color tintAmber    = Color(0xFFB45309);
+  static const Color tintAmberBg  = Color(0xFFFEF3CD);
+  static const Color tintGreenBg  = Color(0xFFE6F4EE);
+
+  /// Variante legible de un color de estado para TEXTO e íconos pequeños.
+  /// `esmeraldGreen`, `alertAmber` y `panicRed` no alcanzan 4.5:1 (WCAG AA)
+  /// como texto sobre fondos claros/tintados; se oscurecen sin cambiar el tono.
+  /// Los fondos, bordes y puntos de estado siguen usando el token original.
+  static Color readable(Color status) {
+    if (status == trustBlue) return trustBlue; // ya cumple (8.6:1)
+    if (status == alertAmber) return tintAmber;
+    return Color.lerp(status, black, 0.4)!;
+  }
 }
 
 // ── Tema principal ─────────────────────────────────────────────────
@@ -156,6 +181,52 @@ class AppTheme {
         backgroundColor: Colors.transparent,
         titleTextStyle: headlineMd.copyWith(color: AppColors.trustBlue),
         iconTheme: const IconThemeData(color: AppColors.trustBlue),
+      ),
+
+      // ── Diálogos ────────────────────────────────────────────────
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.cardSurface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        titleTextStyle: headlineMd.copyWith(color: AppColors.black),
+        contentTextStyle: bodyMd.copyWith(color: AppColors.outline),
+      ),
+
+      // ── Bottom sheets ───────────────────────────────────────────
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: AppColors.cardSurface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+      ),
+
+      // ── Snackbars ───────────────────────────────────────────────
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFF262630),
+        contentTextStyle: bodyMd.copyWith(color: Colors.white),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+
+      // ── Transiciones de pantalla ──────────────────────────────────
+      // Slide nativo en vez del "fade+scale" default de Material,
+      // se percibe más fluido y consistente entre Android/iOS/desktop.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.linux: CupertinoPageTransitionsBuilder(),
+        },
       ),
     );
   }

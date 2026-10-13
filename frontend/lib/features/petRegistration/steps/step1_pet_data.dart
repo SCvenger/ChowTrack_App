@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
 import '../../../core/app_theme.dart';
 import '../../../core/utils/app_validators.dart';
-import '/../../shared/widgets/photo_picker_widget.dart';
+import '../../../shared/widgets/photo_picker_widget.dart';
 import '../widgets/breed_dropdown.dart';
+import '../widgets/progress_indicator.dart';
 
 class Step1PetData extends StatefulWidget {
   final Function(Map<String, dynamic>) onComplete;
@@ -11,10 +13,21 @@ class Step1PetData extends StatefulWidget {
   /// Cierra el wizard. Es null en el primer registro (no hay a dónde volver).
   final VoidCallback? onBack;
 
+  /// Datos ya ingresados: al volver desde el paso 2 el formulario se
+  /// rellena en vez de empezar de cero.
+  final String? initialName;
+  final String? initialBreed;
+  final int? initialAge;
+  final File? initialPhoto;
+
   const Step1PetData({
     super.key,
     required this.onComplete,
     this.onBack,
+    this.initialName,
+    this.initialBreed,
+    this.initialAge,
+    this.initialPhoto,
   });
 
   @override
@@ -23,30 +36,30 @@ class Step1PetData extends StatefulWidget {
 
 class _Step1PetDataState extends State<Step1PetData> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _ageController = TextEditingController();
+  late final _nameController = TextEditingController(text: widget.initialName);
+  late final _ageController = TextEditingController(
+    text: widget.initialAge?.toString(),
+  );
 
-  String? _selectedBreed;
-  File? _selectedPhoto;
+  late String? _selectedBreed = widget.initialBreed;
+  late File? _selectedPhoto = widget.initialPhoto;
+
+  // El error de foto se muestra junto al picker (no en un snackbar suelto),
+  // y solo después del primer intento de continuar.
+  bool _showPhotoError = false;
 
   void _submitForm() {
-    if (_formKey.currentState!.validate() && _selectedPhoto != null) {
+    final formOk = _formKey.currentState!.validate();
+    setState(() => _showPhotoError = _selectedPhoto == null);
+
+    if (formOk && _selectedPhoto != null) {
+      FocusScope.of(context).unfocus();
       widget.onComplete({
         'name': _nameController.text.trim(),
         'breed': _selectedBreed,
         'age': int.parse(_ageController.text.trim()),
         'photo': _selectedPhoto,
       });
-    } else if (_selectedPhoto == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Por favor, agrega una foto de tu mascota',
-            style: AppTheme.bodyMd.copyWith(color: Colors.white),
-          ),
-          backgroundColor: AppColors.panicRed,
-        ),
-      );
     }
   }
 
@@ -59,33 +72,40 @@ class _Step1PetDataState extends State<Step1PetData> {
 
   @override
   Widget build(BuildContext context) {
+    final errorColor = Theme.of(context).colorScheme.error;
+
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
         leading: widget.onBack != null
             ? IconButton(
+                tooltip: 'Cancelar registro',
                 icon: const Icon(Icons.arrow_back),
                 onPressed: widget.onBack,
               )
             : null,
-        title: Text('Chow-Track', style: AppTheme.headlineMd),
+        title: const ProgressIndicatorr(currentStep: 1),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(
+        padding: const EdgeInsets.symmetric(
           horizontal: AppTheme.marginMobile,
           vertical: AppTheme.gutter,
         ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Título
-              Text(
-                'Crea el perfil de tu\nmejor amigo',
-                textAlign: TextAlign.center,
-                style: AppTheme.headlineLg,
+              Semantics(
+                header: true,
+                child: Text(
+                  'Crea el perfil de tu\nmejor amigo',
+                  textAlign: TextAlign.center,
+                  style: AppTheme.headlineLg,
+                ),
               ),
 
               const SizedBox(height: 8),
@@ -97,17 +117,33 @@ class _Step1PetDataState extends State<Step1PetData> {
                 style: AppTheme.bodyMd.copyWith(color: AppColors.outline),
               ),
 
-              SizedBox(height: AppTheme.stackMd),
+              const SizedBox(height: AppTheme.stackMd),
 
               // Photo picker
               PhotoPickerWidget(
                 label: 'Foto del cuerpo (no de la nariz)',
+                initialPhoto: _selectedPhoto,
+                hasError: _showPhotoError,
                 onPhotoSelected: (photo) {
-                  setState(() => _selectedPhoto = photo);
+                  setState(() {
+                    _selectedPhoto = photo;
+                    if (photo != null) _showPhotoError = false;
+                  });
                 },
               ),
 
-              SizedBox(height: AppTheme.stackMd),
+              if (_showPhotoError && _selectedPhoto == null) ...[
+                const SizedBox(height: 6),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    'Agrega una foto para que puedan reconocerla',
+                    style: AppTheme.labelSm.copyWith(color: errorColor),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: AppTheme.stackMd),
 
               // Nombre
               TextFormField(
@@ -117,10 +153,13 @@ class _Step1PetDataState extends State<Step1PetData> {
                   hintText: 'Ej. Max, Luna...',
                 ),
                 style: AppTheme.bodyMd,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 validator: AppValidators.petName,
               ),
 
-              SizedBox(height: AppTheme.gutter),
+              const SizedBox(height: AppTheme.gutter),
 
               // Raza
               BreedField(
@@ -130,28 +169,38 @@ class _Step1PetDataState extends State<Step1PetData> {
                 },
               ),
 
-              SizedBox(height: AppTheme.gutter),
+              const SizedBox(height: AppTheme.gutter),
 
-              // Edad
+              // Edad — solo dígitos (antes aceptaba "-", "." y ",")
               TextFormField(
                 controller: _ageController,
                 decoration: const InputDecoration(
-                  labelText: 'Edad (Años)',
-                  hintText: '0',
+                  labelText: 'Edad (años)',
+                  hintText: 'Ej. 3',
                 ),
                 keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(2),
+                ],
                 style: AppTheme.bodyMd,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _submitForm(),
+                autovalidateMode: AutovalidateMode.onUserInteraction,
                 validator: AppValidators.petAge,
               ),
 
-              SizedBox(height: AppTheme.stackLg),
+              const SizedBox(height: AppTheme.stackLg),
 
               // Botón siguiente
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _submitForm,
-                  child: Text('Siguiente', style: AppTheme.labelLg.copyWith(color: Colors.white)),
+                  child: Text(
+                    'Siguiente',
+                    style: AppTheme.labelLg.copyWith(color: Colors.white),
+                  ),
                 ),
               ),
             ],

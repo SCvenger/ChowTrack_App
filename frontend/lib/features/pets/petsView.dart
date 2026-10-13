@@ -9,7 +9,6 @@ import '../navigation/navigation_controller.dart';
 import '../petRegistration/models/pet_model.dart';
 import 'pet_detail_view.dart';
 
-
 class PetsView extends StatefulWidget {
   const PetsView({super.key});
 
@@ -43,8 +42,18 @@ class _PetsViewState extends State<PetsView> {
 
     if (!mounted) return;
     navController.showNavBar();
-    // Refresca desde el controller compartido
-    context.read<PetsController>().loadPets();
+    // Refresca en silencio: la lista actual sigue visible mientras llega
+    // la nueva (antes parpadeaba al skeleton al volver del wizard).
+    context.read<PetsController>().loadPets(silent: true);
+  }
+
+  Future<void> _refresh() async {
+    final ctrl = context.read<PetsController>();
+    await ctrl.loadPets(silent: true);
+    if (!mounted || !ctrl.hasError) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(ctrl.error!)));
   }
 
   @override
@@ -60,11 +69,9 @@ class _PetsViewState extends State<PetsView> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         titleSpacing: AppTheme.marginMobile,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Mis mascotas', style: AppTheme.headlineMd, textAlign: TextAlign.center),
-          ],
+        title: Semantics(
+          header: true,
+          child: Text('Mis mascotas', style: AppTheme.headlineMd),
         ),
         toolbarHeight: 72,
       ),
@@ -87,18 +94,23 @@ class _PetsViewState extends State<PetsView> {
   }
 
   Widget _buildBody(PetsController ctrl) {
-    if (ctrl.isLoading) return const _LoadingState();
-    if (ctrl.hasError) {
-      return _ErrorState(
-        message: ctrl.error!,
-        onRetry: () => context.read<PetsController>().loadPets(),
-      );
+    // Skeleton/error a pantalla completa SOLO si no hay nada que mostrar.
+    // Antes, cualquier recarga (incluido el pull-to-refresh) reemplazaba la
+    // lista por el skeleton y desmontaba el propio RefreshIndicator.
+    if (ctrl.pets.isEmpty) {
+      if (ctrl.isLoading) return const _LoadingState();
+      if (ctrl.hasError) {
+        return _ErrorState(
+          message: ctrl.error!,
+          onRetry: () => context.read<PetsController>().loadPets(),
+        );
+      }
+      return _EmptyState(onAddPet: _openAddPet);
     }
-    if (ctrl.pets.isEmpty) return _EmptyState(onAddPet: _openAddPet);
 
     return RefreshIndicator(
       color: AppColors.trustBlue,
-      onRefresh: () => context.read<PetsController>().loadPets(),
+      onRefresh: _refresh,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(
           AppTheme.marginMobile,
@@ -107,8 +119,63 @@ class _PetsViewState extends State<PetsView> {
           104,
         ),
         itemCount: ctrl.pets.length,
-        separatorBuilder: (_, __) => AppTheme.spacer,
-        itemBuilder: (_, index) => _PetCard(pet: ctrl.pets[index]),
+        separatorBuilder: (_, _) => AppTheme.spacer,
+        itemBuilder: (_, index) => _StaggeredEntrance(
+          index: index,
+          child: _PetCard(pet: ctrl.pets[index]),
+        ),
+      ),
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ENTRADA ESCALONADA — fade + slide-up con delay progresivo por índice
+// ═════════════════════════════════════════════════════════════════════════════
+
+class _StaggeredEntrance extends StatefulWidget {
+  final int index;
+  final Widget child;
+
+  const _StaggeredEntrance({required this.index, required this.child});
+
+  @override
+  State<_StaggeredEntrance> createState() => _StaggeredEntranceState();
+}
+
+class _StaggeredEntranceState extends State<_StaggeredEntrance> {
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final cappedIndex = widget.index > 10 ? 10 : widget.index;
+    // Sin animación si el sistema pide reducir movimiento
+    final reduceMotion = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
+    if (reduceMotion) {
+      _visible = true;
+      return;
+    }
+    Future.delayed(Duration(milliseconds: 35 * cappedIndex), () {
+      if (mounted) setState(() => _visible = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSlide(
+      offset: _visible ? Offset.zero : const Offset(0, 0.08),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      child: AnimatedOpacity(
+        opacity: _visible ? 1 : 0,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }
@@ -125,75 +192,94 @@ class _PetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
+    final age = pet.ageYears == null
+        ? ''
+        : ', ${pet.ageYears == 1 ? '1 año' : '${pet.ageYears} años'}';
+    return Semantics(
+      button: true,
+      label:
+          '${pet.name}, ${_StatusBadge.labelFor(pet.status)}'
+          '${pet.breed != null ? ', ${pet.breed}' : ''}$age',
+      hint: 'Ver ficha',
+      excludeSemantics: true,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => PetDetailView(pet: pet)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(AppTheme.gutter),
-            child: Row(
-              children: [
-                _PetPhoto(photoUrl: pet.photoUrl, name: pet.name),
-                const SizedBox(width: AppTheme.gutter),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              pet.name,
-                              style: AppTheme.bodyMd.copyWith(
-                                fontWeight: FontWeight.w600,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => PetDetailView(pet: pet)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(AppTheme.gutter),
+              child: Row(
+                children: [
+                  Hero(
+                    tag: 'pet-photo-${pet.id}',
+                    child: _PetPhoto(photoUrl: pet.photoUrl, name: pet.name),
+                  ),
+                  const SizedBox(width: AppTheme.gutter),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                pet.name,
+                                style: AppTheme.bodyMd.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
+                            ),
+                            _StatusBadge(status: pet.status),
+                          ],
+                        ),
+                        if (pet.breed != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            pet.breed!,
+                            style: AppTheme.labelSm.copyWith(
+                              color: AppColors.outline,
                             ),
                           ),
-                          _StatusBadge(status: pet.status),
                         ],
-                      ),
-                      if (pet.breed != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          pet.breed!,
-                          style: AppTheme.labelSm.copyWith(
-                            color: AppColors.outline,
+                        if (pet.ageYears != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            pet.ageYears == 1
+                                ? '1 año'
+                                : '${pet.ageYears} años',
+                            style: AppTheme.labelSm.copyWith(
+                              color: AppColors.outline,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
-                      if (pet.ageYears != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          pet.ageYears == 1 ? '1 año' : '${pet.ageYears} años',
-                          style: AppTheme.labelSm.copyWith(
-                            color: AppColors.outline,
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-                const Icon(Icons.arrow_forward_ios,
-                    size: 14, color: AppColors.outline),
-              ],
+                  const Icon(
+                    Icons.arrow_forward_ios,
+                    size: 14,
+                    color: AppColors.outline,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -252,12 +338,19 @@ class _StatusBadge extends StatelessWidget {
 
   const _StatusBadge({required this.status});
 
+  static String labelFor(String status) => switch (status) {
+    'lost' => 'Perdido',
+    'found' => 'En proceso',
+    _ => 'En casa',
+  };
+
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (status) {
-      'lost'  => ('Perdido',    AppColors.panicRed),
-      'found' => ('En proceso', AppColors.trustBlue),
-      _       => ('En casa',    AppColors.esmeraldGreen),
+    final label = labelFor(status);
+    final color = switch (status) {
+      'lost' => AppColors.panicRed,
+      'found' => AppColors.trustBlue,
+      _ => AppColors.esmeraldGreen,
     };
 
     return Container(
@@ -269,7 +362,7 @@ class _StatusBadge extends StatelessWidget {
       child: Text(
         label,
         style: AppTheme.labelSm.copyWith(
-          color: color,
+          color: AppColors.readable(color),
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -289,8 +382,8 @@ class _LoadingState extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.all(AppTheme.marginMobile),
       itemCount: 3,
-      separatorBuilder: (_, __) => AppTheme.spacer,
-      itemBuilder: (_, __) => Container(
+      separatorBuilder: (_, _) => AppTheme.spacer,
+      itemBuilder: (_, _) => Container(
         height: 104,
         decoration: BoxDecoration(
           color: AppColors.inputFill,
@@ -321,8 +414,11 @@ class _EmptyState extends StatelessWidget {
                 color: AppColors.trustBlue.withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.pets,
-                  size: 48, color: AppColors.trustBlue),
+              child: const Icon(
+                Icons.pets,
+                size: 48,
+                color: AppColors.trustBlue,
+              ),
             ),
             AppTheme.spacerMd,
             Text('Aún no tienes mascotas', style: AppTheme.headlineMd),
@@ -359,9 +455,11 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.cloud_off_outlined,
-                size: 64,
-                color: AppColors.outline.withValues(alpha: 0.5)),
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 64,
+              color: AppColors.outline.withValues(alpha: 0.5),
+            ),
             AppTheme.spacerMd,
             Text(
               message,

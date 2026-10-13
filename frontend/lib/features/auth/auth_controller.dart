@@ -53,7 +53,10 @@ class AuthController extends ChangeNotifier {
       final pets = await PetService.getMyPets();
       _hasPets = pets.isNotEmpty;
     } catch (_) {
-      _hasPets = false;
+      // Error de red/servidor (p. ej. Render despertando): NO asumir que el
+      // usuario no tiene mascotas — eso lo mandaba al wizard de primer
+      // registro sin salida. Home y Mis mascotas ya muestran "Reintentar".
+      _hasPets = true;
     }
   }
 

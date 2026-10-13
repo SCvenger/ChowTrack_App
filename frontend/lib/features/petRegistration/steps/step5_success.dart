@@ -7,6 +7,9 @@ class Step5Success extends StatelessWidget {
   final String breed;
   final int age;
   final String? phoneNumber;
+  final bool hasNoseScan;
+  final bool isSaving;
+  final VoidCallback onBack;
   final Function() onComplete;
 
   const Step5Success({
@@ -15,13 +18,27 @@ class Step5Success extends StatelessWidget {
     required this.breed,
     required this.age,
     this.phoneNumber,
+    required this.hasNoseScan,
+    required this.isSaving,
+    required this.onBack,
     required this.onComplete,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: 'Volver y editar',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: isSaving ? null : onBack,
+        ),
+        title: const ProgressIndicatorr(currentStep: 5),
+        centerTitle: true,
+      ),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: AppTheme.marginMobile,
@@ -30,39 +47,39 @@ class Step5Success extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Progreso
-              const ProgressIndicatorr(currentStep: 5),
-
-              SizedBox(height: AppTheme.stackMd),
-
-              // Ícono de éxito
+              // Ícono de revisión: el registro todavía NO se guardó.
+              // (Antes decía "¡Perfecto! … está protegido" antes de enviar
+              // nada; si el usuario salía aquí, la mascota nunca se creaba.)
               Container(
                 width: 120,
                 height: 120,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.esmeraldGreen.withValues(alpha: 0.1),
+                  color: AppColors.trustBlue.withValues(alpha: 0.08),
                 ),
                 child: const Icon(
-                  Icons.check_circle,
-                  size: 80,
-                  color: AppColors.esmeraldGreen,
+                  Icons.fact_check_outlined,
+                  size: 64,
+                  color: AppColors.trustBlue,
                 ),
               ),
 
               SizedBox(height: AppTheme.stackMd),
 
               // Título
-              Text(
-                '¡Perfecto!',
-                style: AppTheme.headlineLg,
+              Semantics(
+                header: true,
+                child: Text(
+                  'Último paso',
+                  style: AppTheme.headlineLg,
+                ),
               ),
 
               SizedBox(height: AppTheme.stackSm),
 
               // Descripción
               Text(
-                '$petName está protegido con ChowTrack',
+                'Revisa los datos de $petName y confirma el registro.',
                 textAlign: TextAlign.center,
                 style: AppTheme.bodyLg.copyWith(color: AppColors.outline),
               ),
@@ -83,7 +100,20 @@ class Step5Success extends StatelessWidget {
                     const Divider(height: 16),
                     _SummaryItem(label: 'Raza', value: breed),
                     const Divider(height: 16),
-                    _SummaryItem(label: 'Edad', value: '$age años'),
+                    _SummaryItem(
+                      label: 'Edad',
+                      value: age == 1 ? '1 año' : '$age años',
+                    ),
+                    const Divider(height: 16),
+                    _SummaryItem(
+                      label: 'Huella nasal',
+                      value: hasNoseScan ? 'Capturada' : 'Pendiente',
+                      valueColor: AppColors.readable(
+                        hasNoseScan
+                            ? AppColors.esmeraldGreen
+                            : AppColors.alertAmber,
+                      ),
+                    ),
                     if (phoneNumber != null) ...[
                       const Divider(height: 16),
                       _SummaryItem(label: 'Teléfono', value: phoneNumber!),
@@ -108,7 +138,7 @@ class Step5Success extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Próximos pasos:',
+                      'Después del registro podrás:',
                       style: AppTheme.labelLg.copyWith(
                         color: AppColors.trustBlue,
                       ),
@@ -135,10 +165,11 @@ class Step5Success extends StatelessWidget {
               // Botón principal
               SizedBox(
                 width: double.infinity,
-                child: FilledButton(
-                  onPressed: onComplete,
-                  child: Text(
-                    'Ir al mapa de mascotas',
+                child: FilledButton.icon(
+                  onPressed: isSaving ? null : onComplete,
+                  icon: const Icon(Icons.check),
+                  label: Text(
+                    'Registrar a $petName',
                     style: AppTheme.labelLg.copyWith(color: Colors.white),
                   ),
                 ),
@@ -154,10 +185,12 @@ class Step5Success extends StatelessWidget {
 class _SummaryItem extends StatelessWidget {
   final String label;
   final String value;
+  final Color? valueColor;
 
   const _SummaryItem({
     required this.label,
     required this.value,
+    this.valueColor,
   });
 
   @override
@@ -172,11 +205,17 @@ class _SummaryItem extends StatelessWidget {
             fontWeight: FontWeight.w500,
           ),
         ),
-        Text(
-          value,
-          style: AppTheme.labelLg.copyWith(
-            color: AppColors.black,
-            fontWeight: FontWeight.w600,
+        const SizedBox(width: 16),
+        // Flexible: razas/nombres largos se cortan con "…" en vez de desbordar
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            overflow: TextOverflow.ellipsis,
+            style: AppTheme.labelLg.copyWith(
+              color: valueColor ?? AppColors.black,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],

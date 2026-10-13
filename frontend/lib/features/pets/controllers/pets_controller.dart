@@ -54,14 +54,21 @@ class PetsController extends ChangeNotifier {
     if (index == -1) return;
 
     final previous = _pets[index];
-    _pets[index] = previous.copyWith(status: newStatus);
+    // Optimista: estado + timestamp (lo usa "Tiempo perdido" en el detalle)
+    _pets[index] = previous.copyWith(
+      status: newStatus,
+      lastSeenAt: DateTime.now().toUtc().toIso8601String(),
+    );
     notifyListeners();
 
     try {
       await PetService.updatePetStatus(petId, newStatus, lat: lat, lng: lng);
     } catch (e) {
-      _pets[index] = previous;
-      _error = 'No se pudo actualizar el estado.';
+      // Revertir sin tocar _error: _error es el estado de CARGA de la lista.
+      // Antes, un fallo aquí hacía que PetsView reemplazara toda la lista
+      // por la pantalla de error. El llamador muestra su propio snackbar.
+      final i = _pets.indexWhere((p) => p.id == petId);
+      if (i != -1) _pets[i] = previous;
       notifyListeners();
       rethrow;
     }

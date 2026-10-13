@@ -62,6 +62,14 @@ class NavigationController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Vuelve al estado inicial (logout): el siguiente usuario entra en Home
+  // con la barra visible, no en el último tab de la sesión anterior.
+  void reset() {
+    _currentIndex = 0;
+    _isNavBarVisible = true;
+    notifyListeners();
+  }
+
   // Navega a un tab específico y opcionalmente empuja una ruta dentro de él.
   // Usado principalmente por el sistema de notificaciones push (FCM).
   void navigateToTab(int index, {String? route, Object? args}) {

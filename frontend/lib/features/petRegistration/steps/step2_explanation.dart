@@ -4,16 +4,30 @@ import '../widgets/progress_indicator.dart';
 
 class Step2Explanation extends StatelessWidget {
   final Function() onComplete;
+  final VoidCallback onBack;
 
   const Step2Explanation({
     super.key,
     required this.onComplete,
+    required this.onBack,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Atrás visible (antes solo funcionaba el botón del sistema)
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: 'Volver',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: onBack,
+        ),
+        title: const ProgressIndicatorr(currentStep: 2),
+        centerTitle: true,
+      ),
       body: SafeArea(
+        top: false,
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: AppTheme.marginMobile,
@@ -22,11 +36,7 @@ class Step2Explanation extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Progreso
-              const Padding(
-                padding: EdgeInsets.only(bottom: 32),
-                child: ProgressIndicatorr(currentStep: 2),
-              ),
+              const SizedBox(height: 12),
 
               // Ilustración de trufa nasal
               Container(

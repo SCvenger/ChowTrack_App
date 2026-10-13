@@ -120,9 +120,7 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
               Navigator.pop(context);
               widget.onComplete(null);
             },
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.outline,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.outline),
             child: Text(
               'Continuar sin escaneo',
               style: AppTheme.labelLg.copyWith(color: Colors.white),
@@ -167,29 +165,36 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      GestureDetector(
-                        onTap: widget.onBack,
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withValues(alpha: 0.3),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
+                      Semantics(
+                        button: true,
+                        label: 'Volver',
+                        excludeSemantics: true,
+                        child: GestureDetector(
+                          // Bloqueado durante el escaneo para no perder la foto
+                          onTap: _isScanning ? null : widget.onBack,
+                          child: Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.black.withValues(alpha: 0.3),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
                       const ProgressIndicatorr(currentStep: 3),
                       GestureDetector(
-                        onTap: _showSkipDialog,
+                        onTap: _isScanning ? null : _showSkipDialog,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                          constraints: const BoxConstraints(
+                            minHeight: AppTheme.tapTarget,
                           ),
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.3),
                             borderRadius: BorderRadius.circular(24),
@@ -224,7 +229,9 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
                               vertical: 10,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.esmeraldGreen,
+                              color: AppColors.readable(
+                                AppColors.esmeraldGreen,
+                              ),
                               borderRadius: BorderRadius.circular(24),
                             ),
                             child: Row(
@@ -261,7 +268,9 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
                             icon: const Icon(Icons.camera_alt),
                             label: Text(
                               'Capturar Huella',
-                              style: AppTheme.labelLg.copyWith(color: Colors.white),
+                              style: AppTheme.labelLg.copyWith(
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
@@ -351,10 +360,7 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
             height: 240,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(
-                color: AppColors.esmeraldGreen,
-                width: 3,
-              ),
+              border: Border.all(color: AppColors.esmeraldGreen, width: 3),
             ),
           ),
           const SizedBox(height: 40),
@@ -369,9 +375,7 @@ class _Step3NoseScanState extends State<Step3NoseScan> {
               children: [
                 Text(
                   'Alinea la nariz',
-                  style: AppTheme.headlineMd.copyWith(
-                    color: Colors.white,
-                  ),
+                  style: AppTheme.headlineMd.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: 8),
                 Text(

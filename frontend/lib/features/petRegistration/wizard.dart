@@ -74,6 +74,15 @@ class _PetRegistrationWizardState extends State<PetRegistrationWizard> {
     setState(() => _currentStep = step);
   }
 
+  // Paso anterior real (si el teléfono se omitió, del 5 se vuelve al 3)
+  int get _previousStep =>
+      (_currentStep == 5 && _skipPhoneStep) ? 3 : _currentStep - 1;
+
+  void _goBack() {
+    if (_isSaving || _currentStep <= 1) return;
+    _goToStep(_previousStep);
+  }
+
   // Handlers de cada paso
 
   /// Step 1 — datos básicos: Map< String, dynamic> viene del step,
@@ -137,6 +146,15 @@ class _PetRegistrationWizardState extends State<PetRegistrationWizard> {
 
       if (!mounted) return;
 
+      // Confirmación real del guardado. El ScaffoldMessenger es global, así
+      // que el snackbar sobrevive al cambio de pantalla (wizard → Home/lista).
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('¡${_petName!} ya está protegido con ChowTrack!'),
+          backgroundColor: AppColors.readable(AppColors.esmeraldGreen),
+        ),
+      );
+
       // Notifica al AuthController que el usuario ya tiene mascotas.
       // En el primer registro (wizard como pantalla raíz), esto hace que
       // el Consumer de main.dart reemplace el wizard por el HomeShell.
@@ -174,43 +192,62 @@ class _PetRegistrationWizardState extends State<PetRegistrationWizard> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _currentStep == 1,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _currentStep > 1) {
-          // El botón atrás del sistema retrocede un paso
-          // (si venimos del paso 5 y el teléfono se omitió, vuelve al 3)
-          final previous = (_currentStep == 5 && _skipPhoneStep)
-              ? 3
-              : _currentStep - 1;
-          _goToStep(previous);
-        }
+      // Mientras guarda no se puede salir ni retroceder (evita perder la
+      // respuesta del backend o duplicar el registro).
+      canPop: _currentStep == 1 && !_isSaving,
+      onPopInvokedWithResult: (didPop, _) {
+        // El botón atrás del sistema retrocede un paso
+        if (!didPop) _goBack();
       },
       child: Stack(
         children: [
-          _buildCurrentStep(),
-
-          // Overlay de carga al guardar
-          if (_isSaving)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black.withValues(alpha: 0.5),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation(Colors.white),
-                      ),
-                      SizedBox(height: AppTheme.stackSm),
-                      Text(
-                        'Registrando a ${_petName ?? 'tu mascota'}...',
-                        style: AppTheme.bodyMd.copyWith(color: Colors.white),
-                      ),
-                    ],
-                  ),
-                ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.03),
+                  end: Offset.zero,
+                ).animate(animation),
+                child: child,
               ),
             ),
+            child: KeyedSubtree(
+              key: ValueKey(_currentStep),
+              child: _buildCurrentStep(),
+            ),
+          ),
+
+          // Overlay de carga al guardar
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: _isSaving
+                ? Positioned.fill(
+                    key: const ValueKey('saving'),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                            ),
+                            SizedBox(height: AppTheme.stackSm),
+                            Text(
+                              'Registrando a ${_petName ?? 'tu mascota'}...',
+                              style: AppTheme.bodyMd.copyWith(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                : const SizedBox.shrink(key: ValueKey('not-saving')),
+          ),
         ],
       ),
     );
@@ -221,6 +258,10 @@ class _PetRegistrationWizardState extends State<PetRegistrationWizard> {
       case 1:
         return Step1PetData(
           onComplete: _handleStep1Complete,
+          initialName: _petName,
+          initialBreed: _petBreed,
+          initialAge: _petAge,
+          initialPhoto: _petPhoto,
           // Solo permite salir del wizard si fue abierto desde otra pantalla
           onBack: Navigator.canPop(context)
               ? () => Navigator.pop(context)
@@ -228,7 +269,10 @@ class _PetRegistrationWizardState extends State<PetRegistrationWizard> {
         );
 
       case 2:
-        return Step2Explanation(onComplete: _handleStep2Complete);
+        return Step2Explanation(
+          onComplete: _handleStep2Complete,
+          onBack: _goBack,
+        );
 
       case 3:
         return Step3NoseScan(
@@ -238,7 +282,11 @@ class _PetRegistrationWizardState extends State<PetRegistrationWizard> {
         );
 
       case 4:
-        return Step4Phone(onComplete: _handleStep4Complete);
+        return Step4Phone(
+          onComplete: _handleStep4Complete,
+          onBack: _goBack,
+          initialPhone: _phone,
+        );
 
       case 5:
         return Step5Success(
@@ -246,6 +294,9 @@ class _PetRegistrationWizardState extends State<PetRegistrationWizard> {
           breed:       _petBreed    ?? '',
           age:         _petAge      ?? 0,
           phoneNumber: _phone,
+          hasNoseScan: _nosePhoto != null,
+          isSaving:    _isSaving,
+          onBack:      _goBack,
           onComplete:  _handleStep5Complete,
         );
 
