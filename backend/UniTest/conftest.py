@@ -16,6 +16,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# Genera un PDF automático por cada archivo listado en reporte_pdf.REPORTES
+pytest_plugins = ["reporte_pdf"]
+
 # ── 1. Path hacia backend/ ──────────────────────────────────────────────────
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, BACKEND_DIR)
@@ -26,7 +29,17 @@ sys.path.insert(0, BACKEND_DIR)
 fake_db_module = types.ModuleType("app.database.supabase_client")
 fake_db_module.supabase_anon = MagicMock(name="supabase_anon")
 fake_db_module.supabase_admin = MagicMock(name="supabase_admin")
+# auth.py pide los clientes con Depends(...); los tests los reemplazan con dependency_overrides
+fake_db_module.get_supabase_client = lambda: fake_db_module.supabase_anon
+fake_db_module.get_supabase_admin = lambda: fake_db_module.supabase_admin
 sys.modules["app.database.supabase_client"] = fake_db_module
+
+# auth.py hace `from supabase import Client` (solo como tipo). Si la librería no
+# está instalada (p. ej. en .venv de UniTest), basta con un módulo vacío.
+try:
+    import supabase  # noqa: F401
+except ImportError:
+    sys.modules["supabase"] = types.SimpleNamespace(Client=object)
 
 
 # ── 3. Fixtures ─────────────────────────────────────────────────────────────
@@ -36,16 +49,21 @@ class FakeQuery:
     Imita la API encadenable de supabase-py:
         supabase.table("pets").select("*").eq("id", x).execute()
     Cualquier método devuelve la misma consulta y execute() devuelve `data`.
-    Además guarda los payloads de update() para poder verificarlos.
+    Además guarda los payloads de update() e insert() para poder verificarlos.
     """
 
-    def __init__(self, data, log):
+    def __init__(self, data, log, inserts):
         self._data = data
         self._log = log
+        self._inserts = inserts
         self.not_ = self  # para soportar .not_.is_(...)
 
     def update(self, payload):
         self._log.append(payload)
+        return self
+
+    def insert(self, payload):
+        self._inserts.append(payload)
         return self
 
     def execute(self):
@@ -61,9 +79,10 @@ class FakeSupabase:
     def __init__(self, tables: dict):
         self.tables = tables
         self.updates: list[dict] = []
+        self.inserts: list[dict] = []
 
     def table(self, name):
-        return FakeQuery(self.tables.get(name), self.updates)
+        return FakeQuery(self.tables.get(name), self.updates, self.inserts)
 
 
 @pytest.fixture

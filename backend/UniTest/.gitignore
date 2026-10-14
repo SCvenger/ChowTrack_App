@@ -2,3 +2,7 @@
 __pycache__/
 .pytest_cache/
 .coverage
+
+# PDFs automáticos por ejecución (se generan en local, no se suben)
+reportes/registro_mascotas/
+reportes/login/
