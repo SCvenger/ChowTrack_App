@@ -1,3 +1,4 @@
 # Entorno y resultados generados por el pipeline local o Jenkins.
 .ci-venv/
 .ci-reports/
+qa/serenity/target/

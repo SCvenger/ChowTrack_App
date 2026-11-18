@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Proyecto Maven mínimo que SOLO genera el reporte Serenity de ChowTrack.
+  Las pruebas reales las ejecutan pytest (backend) y flutter test (frontend);
+  resultados_a_serenity.py convierte sus resultados a JSON de Serenity en
+  target/site/serenity, y `mvn verify` arma el reporte HTML con el mismo
+  serenity-maven-plugin que el proyecto Taller QA.
+  No usar `mvn clean`: borraría los JSON antes de generar el reporte.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>bo.chowtrack</groupId>
+    <artifactId>chowtrack-serenity-report</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>ChowTrack - Reporte Serenity</name>
+
+    <properties>
+        <serenity.version>4.2.22</serenity.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>net.serenity-bdd.maven.plugins</groupId>
+                <artifactId>serenity-maven-plugin</artifactId>
+                <version>${serenity.version}</version>
+                <executions>
+                    <execution>
+                        <id>serenity-reports</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>aggregate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

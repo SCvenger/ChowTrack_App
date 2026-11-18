@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    tools {
+        // Mismas herramientas configuradas para el proyecto Taller QA.
+        jdk 'JDK 25'
+        maven 'Maven 3.10.0'
+    }
+
     options {
         timestamps()
     }
@@ -22,6 +28,8 @@ pipeline {
                 dir('.ci-reports') {
                     deleteDir()
                 }
+                bat 'if not exist .ci-reports\\backend mkdir .ci-reports\\backend'
+                bat 'if not exist .ci-reports\\frontend mkdir .ci-reports\\frontend'
             }
         }
 
@@ -35,7 +43,6 @@ pipeline {
         stage('Pruebas backend') {
             steps {
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    bat 'if not exist .ci-reports\\backend mkdir .ci-reports\\backend'
                     dir('backend/UniTest') {
                         bat '"%WORKSPACE%\\.ci-venv\\Scripts\\python.exe" -m pytest -p no:cacheprovider --junitxml="%WORKSPACE%\\.ci-reports\\backend\\resultados.xml" --html="%WORKSPACE%\\.ci-reports\\backend\\index.html" --self-contained-html --cov --cov-config=.coveragerc --cov-report="html:%WORKSPACE%\\.ci-reports\\backend\\cobertura"'
                     }
@@ -53,9 +60,20 @@ pipeline {
 
         stage('Pruebas frontend') {
             steps {
-                dir('frontend') {
-                    bat 'call "%FLUTTER_EXE%" test --no-pub'
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    dir('frontend') {
+                        bat 'call "%FLUTTER_EXE%" test --no-pub --file-reporter "json:%WORKSPACE%\\.ci-reports\\frontend\\resultados.json"'
+                    }
                 }
+            }
+        }
+
+        stage('Reporte Serenity') {
+            steps {
+                // Convierte los resultados reales de pytest y flutter al formato
+                // de Serenity y genera el reporte con serenity-maven-plugin.
+                bat '".ci-venv\\Scripts\\python.exe" qa\\serenity\\resultados_a_serenity.py'
+                bat 'mvn -B -f qa\\serenity\\pom.xml verify'
             }
         }
     }
@@ -65,6 +83,16 @@ pipeline {
             script {
                 if (fileExists('.ci-reports/backend/resultados.xml')) {
                     junit testResults: '.ci-reports/backend/resultados.xml'
+                }
+                if (fileExists('qa/serenity/target/site/serenity/index.html')) {
+                    publishHTML(target: [
+                        reportDir: 'qa/serenity/target/site/serenity',
+                        reportFiles: 'index.html',
+                        reportName: 'Serenity Report',
+                        keepAll: true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing: false
+                    ])
                 }
                 if (fileExists('.ci-reports/backend/index.html')) {
                     publishHTML(target: [
@@ -86,7 +114,7 @@ pipeline {
                         allowMissing: false
                     ])
                 }
-                archiveArtifacts artifacts: '.ci-reports/backend/**', allowEmptyArchive: true
+                archiveArtifacts artifacts: '.ci-reports/**', allowEmptyArchive: true
             }
         }
     }
