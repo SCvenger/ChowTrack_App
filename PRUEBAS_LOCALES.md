@@ -8,6 +8,79 @@ ni el emulador: las pruebas usan dobles (*mocks*) de la base de datos.
 
 ---
 
+## 0. Reporte Serenity (igual que en Taller QA)
+
+Serenity BDD es una herramienta de Java: no ejecuta pruebas de Python ni de Dart.
+Por eso el flujo tiene dos partes:
+
+1. **pytest** y **flutter test** ejecutan las pruebas reales y guardan sus resultados
+   (`.ci-reports\backend\resultados.xml` y `.ci-reports\frontend\resultados.json`).
+2. `qa\serenity\resultados_a_serenity.py` convierte cada resultado al formato JSON
+   de Serenity (sin inventar nada: nombre, archivo, duración, resultado y error), y
+   `mvn verify` con **serenity-maven-plugin 4.2.22** (el mismo del Taller QA)
+   genera el reporte HTML.
+
+En Serenity, cada archivo de pruebas aparece como una *feature*
+(por ejemplo "Backend - Endpoints con Supabase simulado") y cada prueba como un
+escenario, con etiquetas `Backend`/`Frontend` y `pytest`/`flutter test`.
+
+### Requisitos (una sola vez)
+
+| Herramienta | Comprobar con | Ruta en esta PC |
+|---|---|---|
+| Python con dependencias de prueba | `backend\UniTest\.venv\Scripts\python.exe -m pytest --version` | `backend\UniTest\.venv` |
+| Flutter | `flutter --version` | `C:\src\flutter` |
+| Java (JDK 17 o superior) | `java -version` | JDK 25 |
+| Maven | `& "C:\Users\leona\Downloads\apache-maven-3.10.0-bin\apache-maven-3.10.0\bin\mvn.cmd" -v` | Maven 3.10.0 |
+
+### Opción rápida: un solo comando
+
+Desde la raíz del proyecto:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File qa\serenity\ejecutar_local.ps1 -Abrir
+```
+
+Ejecuta backend, frontend y Serenity en orden, muestra un resumen y, con `-Abrir`,
+abre el reporte en el navegador.
+
+### Opción paso a paso (los mismos comandos que el Jenkinsfile)
+
+```powershell
+# 0) Desde la raíz del proyecto
+cd C:\Users\leona\Integrador\ChowTrack_App
+$MVN = "C:\Users\leona\Downloads\apache-maven-3.10.0-bin\apache-maven-3.10.0\bin\mvn.cmd"
+$REP = "$PWD\.ci-reports"
+New-Item -ItemType Directory -Force "$REP\backend", "$REP\frontend" | Out-Null
+
+# 1) Pruebas backend → JUnit XML + HTML + cobertura
+cd backend\UniTest
+.venv\Scripts\python.exe -m pytest -p no:cacheprovider `
+  --junitxml="$REP\backend\resultados.xml" `
+  --html="$REP\backend\index.html" --self-contained-html `
+  --cov --cov-config=.coveragerc --cov-report="html:$REP\backend\cobertura"
+cd ..\..
+
+# 2) Pruebas frontend → JSON
+cd frontend
+flutter test --no-pub --file-reporter "json:$REP\frontend\resultados.json"
+cd ..
+
+# 3) Convertir resultados al formato Serenity
+backend\UniTest\.venv\Scripts\python.exe qa\serenity\resultados_a_serenity.py
+
+# 4) Generar el reporte Serenity (NO usar "clean": borraría los JSON del paso 3)
+& $MVN -f qa\serenity\pom.xml verify
+
+# 5) Abrir el reporte
+start qa\serenity\target\site\serenity\index.html
+```
+
+**Reporte Serenity local:** `qa\serenity\target\site\serenity\index.html`.
+Abierto desde el disco se ve completo, con gráficos e íconos.
+
+---
+
 ## 1. Comandos
 
 ### 1.1 Backend (pytest)
@@ -217,7 +290,8 @@ error de OpenCV, que se verifican con los scripts de `backend/tests/`
 
 El trabajo **`ChowTrack`** (Pipeline, `https://github.com/SCvenger/ChowTrack_App.git`,
 rama `*/main`, `Jenkinsfile`) ejecuta lo mismo que la sección 1, en este orden:
-preparar el entorno Python, pruebas backend, `flutter pub get` y pruebas frontend.
+preparar el entorno Python, pruebas backend, `flutter pub get`, pruebas frontend y
+**Reporte Serenity** (usa las herramientas `JDK 25` y `Maven 3.10.0` de Jenkins).
 
 1. Abrir `http://localhost:8080/job/ChowTrack/` e iniciar sesión.
 2. Pulsar **Construir ahora** (*Build Now*). Dura unos 5 minutos.
@@ -225,6 +299,7 @@ preparar el entorno Python, pruebas backend, `flutter pub get` y pruebas fronten
 
 | Reporte | URL |
 |---|---|
+| **Serenity Report** | `http://localhost:8080/job/ChowTrack/lastBuild/Serenity_20Report/` |
 | Consola completa | `http://localhost:8080/job/ChowTrack/lastBuild/console` |
 | Resultados JUnit (112) | `http://localhost:8080/job/ChowTrack/lastBuild/testReport/` |
 | HTML de pruebas backend | `http://localhost:8080/job/ChowTrack/lastBuild/Pruebas_20backend/` |
@@ -234,5 +309,14 @@ preparar el entorno Python, pruebas backend, `flutter pub get` y pruebas fronten
 Jenkins necesita **más de 1 GiB libre** en el disco C:. Si no lo tiene, desconecta
 el nodo `principal` y la ejecución queda en "Esperando por un ejecutor".
 
-**Ejecución #2 (18/11/2026): SUCCESS en 5,2 min.** 112 pruebas de backend aprobadas
-(JUnit), 22 de frontend aprobadas (consola) y reportes HTML y de cobertura publicados.
+**Ejecución #3 (18/11/2026): SUCCESS.** 112 pruebas de backend y 22 de frontend
+aprobadas. Serenity generó el reporte con las 134 pruebas y se publicaron los reportes
+"Serenity Report", "Pruebas backend" y "Cobertura backend".
+
+> **Gráficos e íconos de Serenity dentro de Jenkins.** Jenkins sirve los reportes
+> HTML con una política de seguridad (CSP) que bloquea su JavaScript y sus fuentes.
+> Por eso, dentro de Jenkins, el reporte muestra los datos sin gráficos (igual que en
+> Taller QA). Para verlo completo: en la página del reporte pulsa **Zip**, descomprime
+> y abre `index.html`. Otra opción es usar el reporte local de la sección 0.
+> También se puede relajar la CSP de Jenkins, pero eso cambia su seguridad y debe
+> decidirlo el administrador.
