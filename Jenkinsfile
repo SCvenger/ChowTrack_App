@@ -9,6 +9,11 @@ pipeline {
         PYTHON_EXE = 'C:\\Python313\\python.exe'
         FLUTTER_EXE = 'C:\\src\\flutter\\bin\\flutter.bat'
         CI = 'true'
+        // Jenkins corre como LocalSystem y el SDK de Flutter pertenece a otro
+        // usuario: sin esto Git lo rechaza por "dubious ownership".
+        GIT_CONFIG_COUNT = '1'
+        GIT_CONFIG_KEY_0 = 'safe.directory'
+        GIT_CONFIG_VALUE_0 = 'C:/src/flutter'
     }
 
     stages {

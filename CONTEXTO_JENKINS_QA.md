@@ -31,6 +31,7 @@ Repositorio: `https://github.com/SCvenger/ChowTrack_App.git`. Rama de trabajo ob
 - El pipeline guarda y publica reportes HTML y JUnit del backend. Las pruebas Flutter se ejecutan y quedan en la consola; aún no se ha integrado un reporte estructurado de frontend ni un PDF en Jenkins.
 - En la última sesión, el entorno de Codex no podía escribir en `.git` ni conectarse a GitHub. Tampoco podía escribir en el archivo de bloqueo del SDK de Flutter. El usuario ejecutó las pruebas Flutter desde su propia terminal.
 - Se preparó el commit `a82236b` (`Configurar pruebas de ChowTrack para Jenkins`) **en la copia aislada** `.codex-publish/work`, con metadatos separados en `.codex-publish/gitdata`. El intento de subirlo falló por falta de conexión; ese commit no está en la rama principal local ni se ha confirmado en GitHub. La copia principal conserva los cambios sin confirmar.
+- Revisión del 18/11/2026: se confirmaron de nuevo 112 pruebas de backend y 22 de frontend en local. Jenkins 2.580.2 corre como servicio `LocalSystem` con los plugins Pipeline, Git, JUnit, HTML Publisher y Timestamper instalados. Como `C:\src\flutter` pertenece al usuario `leona`, el `Jenkinsfile` define `safe.directory` mediante `GIT_CONFIG_*` (solo para el pipeline) para evitar el error "dubious ownership" de Git.
 - No dar por subidos los cambios sin comprobar `git status`, el historial y el repositorio remoto. No subir la carpeta `.codex-publish/`.
 
 ## Cambios propios de esta tarea
